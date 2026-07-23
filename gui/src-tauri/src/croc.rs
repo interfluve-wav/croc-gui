@@ -282,6 +282,77 @@ pub fn prepare_send_zip_archive(paths: &[String]) -> Result<(PathBuf, PathBuf), 
     Ok((workdir, zip_path))
 }
 
+fn encode_userinfo(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        let unreserved = matches!(
+            byte,
+            b'A'..=b'Z'
+                | b'a'..=b'z'
+                | b'0'..=b'9'
+                | b'-'
+                | b'_'
+                | b'.'
+                | b'!'
+                | b'~'
+                | b'*'
+                | b'\''
+                | b'('
+                | b')'
+        );
+        if unreserved {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// Normalize proxy input: `host:port:user:pass` → `scheme://user:pass@host:port`.
+/// Full `socks5://`, `http://`, or `https://` URLs are returned trimmed unchanged.
+pub fn normalize_proxy_url(raw: &str, scheme: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("socks5://")
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+    {
+        return trimmed.to_string();
+    }
+
+    let parts: Vec<&str> = trimmed.split(':').collect();
+    if parts.len() != 4 {
+        return trimmed.to_string();
+    }
+
+    let host = parts[0];
+    let port_str = parts[1];
+    let username = parts[2];
+    let password = parts[3];
+    if host.is_empty() || port_str.is_empty() || username.is_empty() {
+        return trimmed.to_string();
+    }
+
+    let Ok(port) = port_str.parse::<u16>() else {
+        return trimmed.to_string();
+    };
+    if port == 0 {
+        return trimmed.to_string();
+    }
+
+    format!(
+        "{scheme}://{}:{}@{host}:{port}",
+        encode_userinfo(username),
+        encode_userinfo(password)
+    )
+}
+
 pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     let opts = &req.options;
@@ -306,20 +377,20 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     if let Some(socks5) = opts
         .socks5
         .as_ref()
-        .map(|s| s.trim())
+        .map(|s| normalize_proxy_url(s, "socks5"))
         .filter(|s| !s.is_empty())
     {
         args.push("--socks5".into());
-        args.push(socks5.to_string());
+        args.push(socks5);
     }
     if let Some(connect) = opts
         .connect
         .as_ref()
-        .map(|s| s.trim())
+        .map(|s| normalize_proxy_url(s, "http"))
         .filter(|s| !s.is_empty())
     {
         args.push("--connect".into());
-        args.push(connect.to_string());
+        args.push(connect);
     }
 
     match req.mode {
@@ -713,6 +784,79 @@ mod tests {
                 "socks5://127.0.0.1:9050",
                 "--connect",
                 "http://127.0.0.1:8080",
+                "send",
+                "/tmp/a.txt",
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_proxy_url_converts_four_part_format() {
+        assert_eq!(
+            normalize_proxy_url(
+                "v2.proxyempire.io:5000:r_xxx-sid-yyy:72adfb4c0d",
+                "socks5"
+            ),
+            "socks5://r_xxx-sid-yyy:72adfb4c0d@v2.proxyempire.io:5000"
+        );
+        assert_eq!(
+            normalize_proxy_url("proxy.example.com:8080:alice:secret", "http"),
+            "http://alice:secret@proxy.example.com:8080"
+        );
+    }
+
+    #[test]
+    fn normalize_proxy_url_encodes_special_chars() {
+        assert_eq!(
+            normalize_proxy_url("host:1080:user@name:pass!word", "socks5"),
+            "socks5://user%40name:pass!word@host:1080"
+        );
+    }
+
+    #[test]
+    fn normalize_proxy_url_leaves_full_urls_unchanged() {
+        let socks = "socks5://alice:secret@127.0.0.1:9050";
+        assert_eq!(normalize_proxy_url(socks, "socks5"), socks);
+        let http = "http://alice:secret@127.0.0.1:8080";
+        assert_eq!(normalize_proxy_url(http, "http"), http);
+        let https = "https://alice:secret@127.0.0.1:8443";
+        assert_eq!(normalize_proxy_url(https, "http"), https);
+    }
+
+    #[test]
+    fn normalize_proxy_url_rejects_invalid_port() {
+        let raw = "host:0:user:pass";
+        assert_eq!(normalize_proxy_url(raw, "socks5"), raw);
+        let raw = "host:abc:user:pass";
+        assert_eq!(normalize_proxy_url(raw, "socks5"), raw);
+    }
+
+    #[test]
+    fn normalize_proxy_url_empty_input() {
+        assert_eq!(normalize_proxy_url("", "socks5"), "");
+        assert_eq!(normalize_proxy_url("   ", "http"), "");
+    }
+
+    #[test]
+    fn build_args_normalizes_four_part_proxy_on_spawn() {
+        let mut options = opts();
+        options.socks5 = Some("proxy.example.com:5000:user:pass".into());
+        options.connect = Some("proxy.example.com:8080:alice:secret".into());
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec!["/tmp/a.txt".into()],
+            code: None,
+            out_dir: None,
+            options,
+        };
+        let args = build_args(&req).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--socks5",
+                "socks5://user:pass@proxy.example.com:5000",
+                "--connect",
+                "http://alice:secret@proxy.example.com:8080",
                 "send",
                 "/tmp/a.txt",
             ]

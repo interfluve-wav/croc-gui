@@ -10,6 +10,7 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
+    "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "bundle:croc": "node scripts/bundle-croc.mjs",
     "bundle:croc:download": "node scripts/bundle-croc.mjs --download"
@@ -29,6 +30,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^3.2.4"
   }
 }

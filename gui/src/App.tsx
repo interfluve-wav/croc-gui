@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
+import { applyProxyFieldNormalization } from "./proxyPaste";
 import "./App.css";
 
 type Mode = "send" | "receive";
@@ -133,6 +134,13 @@ function normalizeCodePhrase(raw: string): string {
   // Prefer the first whitespace-separated token (phrases are usually hyphenated).
   const token = s.split(/\s+/).find((t) => t.length > 0);
   return (token ?? s).replace(/^['"]+|['"]+$/g, "");
+}
+
+function normalizeProxyField(
+  value: string,
+  protocol: "socks5" | "http",
+): string {
+  return applyProxyFieldNormalization(value, protocol) ?? value;
 }
 
 function formatBytes(n: number): string {
@@ -1081,7 +1089,24 @@ function App() {
                       onChange={(e) =>
                         setOptions((o) => ({ ...o, socks5: e.target.value }))
                       }
-                      placeholder="optional — e.g. socks5://127.0.0.1:9050"
+                      onPaste={(e) => {
+                        const text = e.clipboardData.getData("text");
+                        const next = normalizeProxyField(text, "socks5");
+                        if (next !== text.trim()) {
+                          e.preventDefault();
+                          setOptions((o) => ({ ...o, socks5: next }));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const next = normalizeProxyField(
+                          e.target.value,
+                          "socks5",
+                        );
+                        if (next !== e.target.value) {
+                          setOptions((o) => ({ ...o, socks5: next }));
+                        }
+                      }}
+                      placeholder="host:port:user:pass or socks5://…"
                       disabled={running}
                       spellCheck={false}
                     />
@@ -1093,7 +1118,24 @@ function App() {
                       onChange={(e) =>
                         setOptions((o) => ({ ...o, connect: e.target.value }))
                       }
-                      placeholder="optional — e.g. http://127.0.0.1:8080"
+                      onPaste={(e) => {
+                        const text = e.clipboardData.getData("text");
+                        const next = normalizeProxyField(text, "http");
+                        if (next !== text.trim()) {
+                          e.preventDefault();
+                          setOptions((o) => ({ ...o, connect: next }));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const next = normalizeProxyField(
+                          e.target.value,
+                          "http",
+                        );
+                        if (next !== e.target.value) {
+                          setOptions((o) => ({ ...o, connect: next }));
+                        }
+                      }}
+                      placeholder="host:port:user:pass or http://…"
                       disabled={running}
                       spellCheck={false}
                     />
@@ -1109,7 +1151,8 @@ function App() {
                   </label>
                   <p className="check-hint">
                     Maps to croc <code>--socks5</code> and <code>--connect</code>.
-                    Leave blank to omit.
+                    Paste <code>host:port:user:pass</code> or a full proxy URL —
+                    credentials are converted on paste or when you leave the field.
                   </p>
                 </div>
               )}
