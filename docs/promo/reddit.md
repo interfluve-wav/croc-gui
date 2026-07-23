@@ -64,7 +64,7 @@ Paste-ready copy. **Read each sub's rules before posting.** Most subs limit self
 
 **Suggested subs (pick 1–2, not all):** r/selfhosted · r/macapps · r/linux · r/commandline · r/opensource
 
-**Images:** Upload `docs/images/screenshots/send.png` or `progress.png` as the post image (real app UI). Alternatives: `docs/images/banner-community.png` or `docs/images/banner-square.png` (Reddit prefers native uploads over hotlinked URLs).
+**Images:** Upload `docs/images/banner-community.png` or `docs/images/banner-square.png` (Reddit prefers native uploads over hotlinked URLs).
 
 ---
 
@@ -137,13 +137,11 @@ MIT licensed, source on GitHub, CI builds from public workflow. Review `gui/src-
 ## Reddit markdown image embeds (if sub allows)
 
 ```markdown
-![Send tab](https://raw.githubusercontent.com/interfluve-wav/croc-gui/main/docs/images/screenshots/send.png)
-![Receive tab](https://raw.githubusercontent.com/interfluve-wav/croc-gui/main/docs/images/screenshots/receive.png)
-![Transfer progress](https://raw.githubusercontent.com/interfluve-wav/croc-gui/main/docs/images/screenshots/progress.png)
 ![Community banner](https://raw.githubusercontent.com/interfluve-wav/croc-gui/main/docs/images/banner-community.png)
+![Hero banner](https://raw.githubusercontent.com/interfluve-wav/croc-gui/main/docs/images/banner-hero.png)
 ```
 
-**Prefer:** upload `docs/images/screenshots/send-main.png` directly as the post image. Brand fallbacks: `banner-community.png` or `banner-square.png`.
+**Prefer:** upload `docs/images/banner-community.png` or `banner-square.png` directly as the post image.
 
 ---
 

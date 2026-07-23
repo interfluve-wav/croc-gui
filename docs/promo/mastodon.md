@@ -6,7 +6,7 @@ Mastodon favors concise posts, meaningful hashtags, and alt text on images. No a
 
 ## Main post (paste-ready)
 
-**Attach:** `docs/images/screenshots/send-main.png` or `docs/images/banner-square.png`  
+**Attach:** `docs/images/banner-square.png` or `docs/images/banner-community.png`  
 **Alt text:** Croc GUI — secure cross-platform file transfer desktop app for schollz/croc
 
 ```
@@ -84,7 +84,7 @@ Instance-specific: if your instance has a local `#introductions` or `#projects` 
 
 | Asset | Use |
 |-------|-----|
-| `screenshots/send-main.png` | **Best** — real Send tab window capture |
+| `banner-square.png` | **Best** — square social card |
 | `banner-square.png` | Default brand card — fits Mastodon media preview |
 | `banner-community.png` | Feature list visible in image |
 | `banner-hero.png` | Wide layouts; may crop on mobile |

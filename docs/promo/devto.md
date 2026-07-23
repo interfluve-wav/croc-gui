@@ -39,13 +39,9 @@ Use this structure for a ~800–1200 word post, or paste the short version below
 
 ### 3. Feature tour (screenshots)
 
-Embed from `docs/images/screenshots/`:
+Add app window captures under `docs/images/screenshots/` when ready. Until then, use `docs/images/banner-community.png` or `banner-hero.png` as cover art.
 
-- `send-main.png` — Send: drag-drop, Start button, status log
-- `options-expanded.png` — Options: local-only, relay, zip, proxy
-- `send-overview.png` — alternate Send crop (optional)
-
-Still to capture: Receive mode with code field / QR.
+Suggested captures when you add them: Send (drag-drop), Receive (code field), Options expanded, progress with QR.
 
 ### 4. Architecture (brief)
 
@@ -138,8 +134,8 @@ Relay profiles, local transfer history, receive-mode screenshots, and package-ma
 
 ## Publishing checklist
 
-- [ ] Inline screenshots from `docs/images/screenshots/` (`send-main.png`, `options-expanded.png`)
-- [ ] Cover image uploaded (`banner-hero.png` or `screenshots/send-main.png`)
+- [ ] Inline screenshots from `docs/images/screenshots/` (add when captured)
+- [ ] Cover image uploaded (`banner-hero.png` or `banner-community.png`)
 - [ ] Canonical URL set to GitHub repo
 - [ ] Tags: opensource, rust, react, showdev
 - [ ] Cross-link from README promo section (optional)

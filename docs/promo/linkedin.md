@@ -6,7 +6,7 @@ Professional tone, outcome-focused, one link. LinkedIn truncates long posts — 
 
 ## Short post (paste-ready)
 
-**Attach:** `docs/images/screenshots/send-main.png` or `docs/images/banner-community.png` or `docs/images/banner-hero.png`
+**Attach:** `docs/images/banner-community.png` or `docs/images/banner-hero.png`
 
 ```
 Secure file transfer shouldn't require a terminal — or uploading to someone else's cloud.
@@ -48,7 +48,7 @@ https://github.com/interfluve-wav/croc-gui
 | Tip | Detail |
 |-----|--------|
 | **Timing** | Tue–Wed, 8–10am in your network's timezone |
-| **Image** | Posts with images get more impressions — use `docs/images/screenshots/send-main.png` or `banner-community.png` |
+| **Image** | Posts with images get more impressions — use `banner-community.png` |
 | **Link** | Put link once at end; avoid link-only posts |
 | **Comment** | Pin a comment with the Releases URL if the algo buries links |
 | **Tone** | "I built" / "we shipped" — authentic maker story beats press-release voice |

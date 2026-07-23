@@ -76,8 +76,8 @@ And if croc itself is valuable to you — please sponsor Zack Scholl: github.com
 
 | Asset | Source |
 |-------|--------|
-| **Gallery image 1** | `docs/images/screenshots/send-main.png` |
-| **Gallery image 2** | `docs/images/screenshots/options-expanded.png` |
+| **Gallery image 1** | `docs/images/banner-hero.png` |
+| **Gallery image 2** | `docs/images/banner-community.png` |
 | **Gallery image 3** | `docs/images/banner-community.png` |
 | **Thumbnail / logo** | `docs/images/logo.png` |
 | **Website URL** | `https://github.com/interfluve-wav/croc-gui` |

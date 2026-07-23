@@ -15,24 +15,7 @@ Marketing images for the repo README, social posts, and GitHub branding.
 
 ## App screenshots
 
-Window captures live in [`screenshots/`](screenshots/):
-
-| File | Content |
-|------|---------|
-| `screenshots/send.png` | Send tab — drag-and-drop, ready to start |
-| `screenshots/receive.png` | Receive tab — code phrase + download folder |
-| `screenshots/options.png` | Options expanded — relay, local-only, zip, port |
-| `screenshots/about.png` | About dialog — version + attribution |
-| `screenshots/progress.png` | Send in progress — demo code, QR, status |
-
-Re-capture instructions: [`screenshots/README.md`](screenshots/README.md).
-
-## Capture tips
-
-1. Launch a release or dev build (`cd gui && npm run tauri:dev`).
-2. Use a clean desktop background; crop to the app window.
-3. Prefer 2× retina PNGs (~1440×1280 for the default 720×640 window).
-4. Keep personal paths and codes out of screenshots when possible.
+Add window captures under `screenshots/` when ready (not checked in yet). Capture helpers: `scripts/capture-screenshots.sh`, `gui/scripts/capture-web.mjs`.
 
 ## Promo copy
 
