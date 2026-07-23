@@ -4,7 +4,7 @@ Ambitious but realistic directions for **Croc GUI**. Upstream [croc](https://git
 
 Priorities shift with feedback. Open an [issue](https://github.com/interfluve-wav/croc-gui/issues) if something below should move up.
 
-Research on upstream CLI coverage, proxies, and Tailscale (network path, not SDK): [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md).
+Research on upstream CLI coverage, proxies, and relays: [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md).
 
 ## Next up
 
@@ -45,7 +45,7 @@ Larger bets once the core loop feels finished.
 ### Power user
 
 - Saved option profiles (zip + local + relay bundles)
-- SOCKS5 / HTTP proxy fields (`--socks5`, `--connect`) and Tailscale-as-path helper (`--ip` / MagicDNS) — see [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md); do not embed Tailscale SDK
+- SOCKS5 / HTTP proxy fields (`--socks5`, `--connect`) and known peer `--ip` — see [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md)
 - Bandwidth throttle (`--throttleUpload`)
 - Send short text / clipboard payloads via croc’s `--text`
 - Folder-send polish: `--git`, `--exclude` / `--exclude-file`

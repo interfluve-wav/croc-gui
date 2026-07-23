@@ -132,7 +132,7 @@ Product direction (Next up vs Later): [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 Highlights under consideration: richer progress and history, private-relay profiles, OS share integrations and signed auto-updates, power-user profiles, and accessibility / i18n.
 
-CLI vs GUI gaps, proxies, and Tailscale-as-network-path notes: [`docs/FEATURE_GAP_AND_NETWORK.md`](docs/FEATURE_GAP_AND_NETWORK.md).
+CLI vs GUI gaps, proxies, and relay/local network notes: [`docs/FEATURE_GAP_AND_NETWORK.md`](docs/FEATURE_GAP_AND_NETWORK.md).
 
 ---
 
