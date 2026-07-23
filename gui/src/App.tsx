@@ -253,6 +253,12 @@ function App() {
   aboutOpenRef.current = aboutOpen;
 
   useEffect(() => {
+    if (
+      import.meta.env.DEV &&
+      new URLSearchParams(window.location.search).get("capture")
+    ) {
+      return;
+    }
     invoke<string>("croc_bin_status")
       .then((path) => {
         setBinPath(path);
@@ -266,6 +272,48 @@ function App() {
     invoke<string>("croc_version")
       .then((v) => setCrocVersion(v))
       .catch(() => setCrocVersion(null));
+  }, []);
+
+  /** Dev-only: `?capture=receive|about|options|progress` for docs screenshots (Vite/Playwright). */
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const cap = new URLSearchParams(window.location.search).get("capture");
+    if (!cap) return;
+
+    const isTauri =
+      typeof window !== "undefined" &&
+      ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+    if (!isTauri) {
+      setBinPath("bundled");
+      setBinError(null);
+      setCrocVersion("10.6.0");
+    }
+
+    if (cap === "receive") setMode("receive");
+    if (cap === "about") setAboutOpen(true);
+    if (cap === "options") setOptionsOpen(true);
+    if (cap === "send") setMode("send");
+    if (cap === "progress") {
+      setMode("send");
+      setPaths(["/demo/sample-document.pdf"]);
+      setPhrase("demo-lunar-cedar-piano");
+      setPhase("running");
+      setProgress({
+        percent: 42,
+        bytesDone: 2_097_152,
+        bytesTotal: 5_242_880,
+        speed: "1.2 MB/s",
+        phase: "transferring",
+        label: "Sending demo-document.pdf",
+      });
+      setLog([
+        "Sending 1 files (5.0 MB)",
+        "Sending 'demo-document.pdf' (5.0 MB)",
+        "Code is: demo-lunar-cedar-piano",
+        "On the other computer run:",
+        "croc demo-lunar-cedar-piano",
+      ]);
+    }
   }, []);
 
   useEffect(() => {
