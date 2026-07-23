@@ -132,6 +132,8 @@ Product direction (Next up vs Later): [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 Highlights under consideration: richer progress and history, private-relay profiles, OS share integrations and signed auto-updates, power-user profiles, and accessibility / i18n.
 
+CLI vs GUI gaps, proxies, and Tailscale-as-network-path notes: [`docs/FEATURE_GAP_AND_NETWORK.md`](docs/FEATURE_GAP_AND_NETWORK.md).
+
 ---
 
 ## Project layout
@@ -139,7 +141,7 @@ Highlights under consideration: richer progress and history, private-relay profi
 ```
 croc-gui/
 ├── gui/                 # Tauri 2 + React app
-├── docs/                # Specs, plans, images, roadmap
+├── docs/                # Specs, plans, images, roadmap, feature-gap notes
 ├── .github/             # CI, issue & PR templates
 └── LICENSE
 ```

@@ -4,6 +4,8 @@ Ambitious but realistic directions for **Croc GUI**. Upstream [croc](https://git
 
 Priorities shift with feedback. Open an [issue](https://github.com/interfluve-wav/croc-gui/issues) if something below should move up.
 
+Research on upstream CLI coverage, proxies, and Tailscale (network path, not SDK): [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md).
+
 ## Next up
 
 Near-term work that builds on what already shipped (Send/Receive, QR, drag-drop, local-only, zip, prefs, About, CI).
@@ -11,7 +13,7 @@ Near-term work that builds on what already shipped (Send/Receive, QR, drag-drop,
 1. **Transfer progress that reads like a product** — Parse croc stdout for percent, speed, and ETA where possible; clearer phase labels (connecting → transferring → finishing).
 2. **Local transfer history** — Recent codes, paths, and outcomes (local-only; no cloud). Quick “reuse last receive folder / last relay.”
 3. **Screenshot & release polish** — Capture Send/Receive shots for the README; tag GitHub Releases from CI artifacts; notarization / signing notes for macOS and Windows.
-4. **Relay profiles** — Named presets (default public relay, home LAN, self-hosted) instead of retyping host/port each time.
+4. **Relay profiles** — Named presets (default public relay, home LAN, self-hosted) instead of retyping host/port each time. Include relay password (`--pass`) and optional proxy fields per [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md).
 5. **QR that encodes `croc <phrase>`** — Full command in the code so phone scanners and docs stay consistent.
 
 ## Later
@@ -43,8 +45,10 @@ Larger bets once the core loop feels finished.
 ### Power user
 
 - Saved option profiles (zip + local + relay bundles)
-- Bandwidth throttle if/when upstream supports it cleanly
-- Send short text / clipboard payloads via croc’s text modes
+- SOCKS5 / HTTP proxy fields (`--socks5`, `--connect`) and Tailscale-as-path helper (`--ip` / MagicDNS) — see [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md); do not embed Tailscale SDK
+- Bandwidth throttle (`--throttleUpload`)
+- Send short text / clipboard payloads via croc’s `--text`
+- Folder-send polish: `--git`, `--exclude` / `--exclude-file`
 - Companion CLI or scripting hooks that call the same bundled binary
 - Export / import prefs as JSON
 
