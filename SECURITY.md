@@ -13,8 +13,7 @@ Security fixes are applied to the latest release of **Croc GUI** on
 1. Prefer a private GitHub Security Advisory on
    [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui/security/advisories/new)
    if available.
-2. Otherwise contact the maintainer via [interfluve-wav](https://github.com/interfluve-wav)
-   or [suhaaschitturi.com](https://suhaaschitturi.com).
+2. Otherwise contact the maintainer via [interfluve-wav](https://github.com/interfluve-wav).
 
 Include: affected OS/version, steps to reproduce, impact, and whether the issue
 is in the **GUI wrapper** or likely in **upstream croc**.

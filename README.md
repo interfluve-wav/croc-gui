@@ -51,7 +51,7 @@
 | | |
 |---|---|
 | **Transfer engine** | [schollz/croc](https://github.com/schollz/croc) by Zack Scholl — [Sponsor schollz](https://github.com/sponsors/schollz) |
-| **This desktop app** | Built by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) |
+| **This desktop app** | Built by [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) |
 
 Attribution details, upstream etiquette, and how to notify schollz respectfully: [`docs/UPSTREAM_ATTRIBUTION.md`](docs/UPSTREAM_ATTRIBUTION.md).
 
@@ -78,7 +78,7 @@ Drag and drop files, share a **QR code** or code phrase, or run **local-only LAN
 | Layer | Credit |
 |-------|--------|
 | **croc** (transfer engine) | [Zack Scholl / schollz](https://github.com/schollz) — [schollz/croc](https://github.com/schollz/croc) — [Sponsor schollz](https://github.com/sponsors/schollz) |
-| **Croc GUI** (this desktop app) | Built by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) · [suhaaschitturi.com](https://suhaaschitturi.com) |
+| **Croc GUI** (this desktop app) | Built by [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) |
 
 This repository is an **unofficial** GUI wrapper around upstream croc — not a claim of authorship over the protocol or CLI, and not an official schollz product.
 
@@ -184,7 +184,7 @@ croc-gui/
 | This GUI (UI, packaging, wrappers) | [Issues in this repo](https://github.com/interfluve-wav/croc-gui/issues) |
 | croc protocol / CLI behavior | [schollz/croc issues](https://github.com/schollz/croc/issues) |
 | Sponsor upstream | [github.com/sponsors/schollz](https://github.com/sponsors/schollz) |
-| GUI maintainer | [interfluve-wav](https://github.com/interfluve-wav) · [Suhaas](https://suhaaschitturi.com) |
+| GUI maintainer | [interfluve-wav](https://github.com/interfluve-wav) |
 | Attribution & upstream etiquette | [`docs/UPSTREAM_ATTRIBUTION.md`](docs/UPSTREAM_ATTRIBUTION.md) |
 
 More detail: [`SUPPORT.md`](SUPPORT.md).
@@ -207,7 +207,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). Please follow the [`CODE_OF_CONDUCT.md
 <p align="center">
   <sub>
     <a href="https://github.com/interfluve-wav/croc-gui">Croc GUI</a> by
-    <a href="https://github.com/interfluve-wav">Suhaas / interfluve-wav</a>
+    <a href="https://github.com/interfluve-wav">interfluve-wav</a>
     · Powered by <a href="https://github.com/schollz/croc">schollz/croc</a>
     · <a href="https://github.com/sponsors/schollz">Sponsor schollz</a>
   </sub>

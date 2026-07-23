@@ -32,6 +32,7 @@ gui/src-tauri/bin/croc.exe
 
 # Rust / Tauri
 gui/src-tauri/target/
+gui/src-tauri/src-tauri/
 
 # Env / secrets
 .env

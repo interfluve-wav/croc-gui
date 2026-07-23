@@ -46,8 +46,7 @@ public spaces.
 ## Enforcement
 
 Report incidents to the maintainers via GitHub
-([interfluve-wav](https://github.com/interfluve-wav)) or the contact method listed
-on [suhaaschitturi.com](https://suhaaschitturi.com). All complaints will be
+([interfluve-wav](https://github.com/interfluve-wav)). All complaints will be
 reviewed and investigated promptly and fairly.
 
 ## Attribution

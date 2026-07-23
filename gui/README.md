@@ -5,7 +5,7 @@ Desktop GUI for [croc](https://github.com/schollz/croc) built with Tauri 2 + Rea
 ### Credits
 
 - **croc** (transfer engine): [schollz/croc](https://github.com/schollz/croc) by Zack Scholl — [Sponsor schollz](https://github.com/sponsors/schollz)
-- **Croc GUI** (this app): built by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [croc-gui](https://github.com/interfluve-wav/croc-gui) · [suhaaschitturi.com](https://suhaaschitturi.com)
+- **Croc GUI** (this app): built by [**interfluve-wav**](https://github.com/interfluve-wav) — [croc-gui](https://github.com/interfluve-wav/croc-gui)
 
 This app is a GUI wrapper around the upstream CLI — send/receive and crypto/relay logic come from croc, not a reimplementation.
 

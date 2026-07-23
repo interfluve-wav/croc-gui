@@ -34,4 +34,4 @@ Be respectful. See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 ## Credits
 
 - **croc:** [schollz](https://github.com/schollz/croc) — [Sponsor](https://github.com/sponsors/schollz)
-- **Croc GUI:** [Suhaas / interfluve-wav](https://github.com/interfluve-wav)
+- **Croc GUI:** [interfluve-wav](https://github.com/interfluve-wav)

@@ -3,7 +3,8 @@ mod progress;
 
 use croc::{
     extract_code_phrase, list_top_level_names, prepare_send_zip_archive, resolve_croc_bin,
-    zip_new_entries, StartTransferRequest, TransferMode,
+    resolve_relay_options, sanitize_code_phrase, zip_new_entries, StartTransferRequest,
+    TransferMode, DEFAULT_RELAY,
 };
 use progress::parse_progress_line;
 use serde::Serialize;
@@ -14,6 +15,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 struct PendingZip {
     out_dir: PathBuf,
@@ -121,18 +125,60 @@ fn croc_version(app: AppHandle) -> Result<String, String> {
     Ok(text)
 }
 
+fn resolve_receive_out_dir(
+    app: &AppHandle,
+    request: &mut StartTransferRequest,
+) -> Result<(), String> {
+    if !matches!(request.mode, TransferMode::Receive) {
+        return Ok(());
+    }
+    let has_out = request
+        .out_dir
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .is_some();
+    if has_out {
+        return Ok(());
+    }
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("Could not resolve Downloads folder: {e}"))?;
+    if downloads.as_os_str().is_empty() {
+        return Err(
+            "Choose a download folder — Croc could not find your Downloads directory.".into(),
+        );
+    }
+    request.out_dir = Some(downloads.display().to_string());
+    Ok(())
+}
+
+fn ensure_out_dir_writable(path: &str) -> Result<PathBuf, String> {
+    let out = PathBuf::from(path);
+    if !out.exists() {
+        std::fs::create_dir_all(&out)
+            .map_err(|e| format!("Cannot create download folder {}: {e}", out.display()))?;
+    }
+    let probe = out.join(".croc-gui-write-test");
+    std::fs::write(&probe, b"").map_err(|e| {
+        format!(
+            "Download folder is not writable ({}). Choose another folder.",
+            e
+        )
+    })?;
+    let _ = std::fs::remove_file(&probe);
+    Ok(out)
+}
+
 #[tauri::command]
 fn start_transfer(
     app: AppHandle,
     state: State<'_, TransferState>,
     request: StartTransferRequest,
 ) -> Result<(), String> {
-    {
-        let guard = state.child.lock().map_err(|e| e.to_string())?;
-        if guard.is_some() {
-            return Err("A transfer is already running".into());
-        }
-    }
+    // Clear any stale croc child before starting (e.g. receive still listening).
+    let _ = stop_transfer_child(&state, None);
 
     let resource_dir = app.path().resource_dir().ok();
     let program = resolve_croc_bin(resource_dir.as_deref())?;
@@ -166,6 +212,21 @@ fn start_transfer(
     {
         let mut work_guard = state.send_zip_workdir.lock().map_err(|e| e.to_string())?;
         *work_guard = send_zip_workdir.clone();
+    }
+
+    resolve_receive_out_dir(&app, &mut request)?;
+    if matches!(request.mode, TransferMode::Receive) {
+        if let Some(code) = request.code.as_ref() {
+            request.code = Some(sanitize_code_phrase(code)?);
+        }
+        if let Some(out) = request
+            .out_dir
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            ensure_out_dir_writable(out)?;
+        }
     }
 
     let args = match croc::build_args(&request) {
@@ -221,6 +282,44 @@ fn start_transfer(
                 },
             );
         }
+    } else if matches!(request.mode, TransferMode::Receive) {
+        let relay_hint = if request.options.local {
+            "LAN only".to_string()
+        } else if request
+            .options
+            .relay
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .is_some()
+        {
+            request
+                .options
+                .relay
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default()
+        } else {
+            format!("{DEFAULT_RELAY} (getcroc.com)")
+        };
+        let _ = app.emit(
+            "transfer-line",
+            TransferLinePayload {
+                stream: "stdout".into(),
+                line: format!("Connecting to relay {relay_hint}…"),
+                code: None,
+            },
+        );
+        if let Some(out) = request.out_dir.as_ref() {
+            let _ = app.emit(
+                "transfer-line",
+                TransferLinePayload {
+                    stream: "stdout".into(),
+                    line: format!("Saving received files to {}", out.trim()),
+                    code: None,
+                },
+            );
+        }
     }
 
     let mut command = Command::new(&program);
@@ -229,6 +328,38 @@ fn start_transfer(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            libc::setpgid(0, 0);
+            Ok(())
+        });
+    }
+
+    if matches!(request.mode, TransferMode::Receive) {
+        if let Some(code) = request
+            .code
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            // croc v10+ secure receive mode — positional codes exit 0 without transferring.
+            command.env("CROC_SECRET", code);
+            if !request.options.local {
+                let (_, relay_pass) = resolve_relay_options(&request.options, &request.mode);
+                if let Some(pass) = relay_pass {
+                    command.env("CROC_PASS", pass);
+                }
+            }
+        } else {
+            clear_send_zip_workdir(&state);
+            if let Ok(mut zip_guard) = state.pending_zip.lock() {
+                *zip_guard = None;
+            }
+            return Err("Receive code is missing — paste the phrase from getcroc.com.".into());
+        }
+    }
 
     if let Some(out) = request
         .out_dir
@@ -388,25 +519,80 @@ fn clear_send_zip_workdir(state: &TransferState) {
     }
 }
 
-#[tauri::command]
-fn cancel_transfer(app: AppHandle, state: State<'_, TransferState>) -> Result<(), String> {
-    {
-        let mut zip_guard = state.pending_zip.lock().map_err(|e| e.to_string())?;
+fn clear_pending_zip(state: &TransferState) {
+    if let Ok(mut zip_guard) = state.pending_zip.lock() {
         *zip_guard = None;
     }
-    clear_send_zip_workdir(&state);
-    let mut guard = state.child.lock().map_err(|e| e.to_string())?;
-    if let Some(mut child) = guard.take() {
-        let _ = child.kill();
-        let _ = child.wait();
-        drop(guard);
+}
+
+fn kill_child_tree(child: &mut Child) -> Option<i32> {
+    let pid = child.id();
+    #[cfg(unix)]
+    {
+        let pgid = pid as i32;
+        unsafe {
+            libc::killpg(pgid, libc::SIGTERM);
+        }
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    let _ = child.kill();
+    child.wait().ok().and_then(|s| s.code())
+}
+
+/// Stop croc if running. Returns exit code when a child was stopped.
+fn stop_transfer_child(
+    state: &TransferState,
+    emit: Option<(&AppHandle, bool)>,
+) -> Option<Option<i32>> {
+    clear_pending_zip(state);
+    clear_send_zip_workdir(state);
+
+    let mut guard = match state.child.lock() {
+        Ok(g) => g,
+        Err(_) => return None,
+    };
+    let Some(mut child) = guard.take() else {
+        return None;
+    };
+    let code = kill_child_tree(&mut child);
+
+    if let Some((app, cancelled)) = emit {
+        let exit_code = if cancelled {
+            None
+        } else {
+            code.or(Some(0))
+        };
         let _ = app.emit(
             "transfer-exit",
             TransferExitPayload {
-                code: None,
-                cancelled: true,
+                code: exit_code,
+                cancelled,
             },
         );
+    }
+
+    Some(code)
+}
+
+#[tauri::command]
+fn cancel_transfer(app: AppHandle, state: State<'_, TransferState>) -> Result<(), String> {
+    if stop_transfer_child(&state, Some((&app, true))).is_some() {
+        return Ok(());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn reset_transfer(_app: AppHandle, state: State<'_, TransferState>) -> Result<(), String> {
+    let _ = stop_transfer_child(&state, None);
+    Ok(())
+}
+
+/// Kill a still-running croc after the UI considers the transfer done (e.g. receive listener).
+#[tauri::command]
+fn finish_transfer(app: AppHandle, state: State<'_, TransferState>) -> Result<(), String> {
+    if stop_transfer_child(&state, Some((&app, false))).is_some() {
+        return Ok(());
     }
     Ok(())
 }
@@ -425,7 +611,9 @@ pub fn run() {
             croc_bin_status,
             croc_version,
             start_transfer,
-            cancel_transfer
+            cancel_transfer,
+            reset_transfer,
+            finish_transfer
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

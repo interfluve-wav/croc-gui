@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { downloadDir } from "@tauri-apps/api/path";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -10,6 +11,11 @@ import { applyProxyFieldNormalization } from "./proxyPaste";
 import {
   buildCliReceiveCommand,
   buildReceiveUrl,
+  GETCROC_RELAY,
+  normalizeCodePhrase,
+  parseReceiveInput,
+  relayHandshakeErrorMessage,
+  sanitizeCodePhrase,
 } from "./shareLink";
 import "./App.css";
 
@@ -75,7 +81,7 @@ type ProgressState = {
 
 type CopiedKind = "link" | "phrase" | "command" | null;
 
-const GUI_VERSION = "0.1.3";
+const GUI_VERSION = "0.1.4";
 const PREFS_KEY = "croc-gui-prefs-v2";
 const PREFS_KEY_V1 = "croc-gui-prefs-v1";
 
@@ -131,19 +137,35 @@ function basename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-/** Normalize pasted/dropped text into a croc code phrase. */
-function normalizeCodePhrase(raw: string): string {
-  let s = raw.trim();
-  if (!s) return "";
-  const firstLine = s.split(/\r?\n/).find((line) => line.trim()) ?? s;
-  s = firstLine.trim();
-  const crocCmd = s.match(/^croc\s+(.+)$/i);
-  if (crocCmd?.[1]) {
-    s = crocCmd[1].trim();
+function applyReceivePaste(
+  raw: string,
+  setCodeInput: (code: string) => void,
+  setOptions: Dispatch<SetStateAction<TransferOptions>>,
+  setRememberRelayPass: (remember: boolean) => void,
+  setError: (error: string | null) => void,
+): boolean {
+  const parsed = parseReceiveInput(raw);
+  if (!parsed?.code) return false;
+  const sanitized = sanitizeCodePhrase(parsed.code);
+  if (!sanitized) {
+    setError("Could not read a valid croc code from that paste.");
+    return false;
   }
-  // Prefer the first whitespace-separated token (phrases are usually hyphenated).
-  const token = s.split(/\s+/).find((t) => t.length > 0);
-  return (token ?? s).replace(/^['"]+|['"]+$/g, "");
+  setCodeInput(sanitized.code);
+  if (sanitized.changed) {
+    setError("Removed invalid characters from the code phrase.");
+  }
+  if (parsed.relay !== undefined) {
+    setOptions((o) => ({ ...o, relay: parsed.relay ?? "" }));
+  }
+  if (parsed.relayPass !== undefined) {
+    setOptions((o) => ({ ...o, relayPass: parsed.relayPass ?? "" }));
+    if (parsed.relayPass) setRememberRelayPass(true);
+  }
+  if (!sanitized.changed) {
+    setError(null);
+  }
+  return true;
 }
 
 function normalizeProxyField(
@@ -243,13 +265,16 @@ function App() {
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<number | null>(null);
   const lastProgressAt = useRef<number | null>(null);
+  const finishTimer = useRef<number | null>(null);
   const modeRef = useRef(mode);
   const runningRef = useRef(false);
+  const phaseRef = useRef(phase);
   const aboutOpenRef = useRef(aboutOpen);
 
   const running = phase === "running";
   modeRef.current = mode;
   runningRef.current = running;
+  phaseRef.current = phase;
   aboutOpenRef.current = aboutOpen;
 
   useEffect(() => {
@@ -423,6 +448,23 @@ function App() {
         if (code) {
           setPhrase(code);
         }
+        const handshakeErr = relayHandshakeErrorMessage(line);
+        if (handshakeErr) {
+          setError(handshakeErr);
+        }
+        if (line.includes("On UNIX systems, to receive with croc")) {
+          setError(
+            "Receive failed: croc needs the code via CROC_SECRET. Rebuild or update the app.",
+          );
+        }
+        if (
+          phaseRef.current === "running" &&
+          (line.includes("[error]") ||
+            line.includes("read-only file system") ||
+            handshakeErr != null)
+        ) {
+          void invoke("finish_transfer").catch(() => undefined);
+        }
       });
       unlistenProgress = await listen<ProgressEvent>(
         "transfer-progress",
@@ -460,6 +502,7 @@ function App() {
             }. Check the status log.`,
           );
         }
+        void invoke("reset_transfer").catch(() => undefined);
       });
     })();
 
@@ -475,6 +518,30 @@ function App() {
     const id = window.setInterval(() => setProgressTick((t) => t + 1), 1000);
     return () => window.clearInterval(id);
   }, [phase]);
+
+  useEffect(() => {
+    if (finishTimer.current != null) {
+      window.clearTimeout(finishTimer.current);
+      finishTimer.current = null;
+    }
+    if (phase !== "running") return;
+    const atCapacity =
+      progress.percent === 100 &&
+      progress.bytesTotal != null &&
+      progress.bytesDone != null &&
+      progress.bytesDone >= progress.bytesTotal;
+    if (!atCapacity) return;
+    finishTimer.current = window.setTimeout(() => {
+      finishTimer.current = null;
+      void invoke("finish_transfer").catch(() => undefined);
+    }, 2000);
+    return () => {
+      if (finishTimer.current != null) {
+        window.clearTimeout(finishTimer.current);
+        finishTimer.current = null;
+      }
+    };
+  }, [phase, progress.percent, progress.bytesDone, progress.bytesTotal]);
 
   useEffect(() => {
     const el = logRef.current;
@@ -596,6 +663,7 @@ function App() {
     if (running || binError) return false;
     if (mode === "send") return paths.length > 0;
     if (!codeInput.trim()) return false;
+    if (!outDir.trim()) return false;
     if (options.zipAfterReceive && !outDir.trim()) return false;
     return true;
   }, [running, binError, mode, paths, codeInput, options.zipAfterReceive, outDir]);
@@ -620,14 +688,28 @@ function App() {
     }
   }
 
-  async function pickOutDir() {
+  async function promptReceiveFolder(): Promise<boolean> {
+    let defaultPath = outDir.trim() || undefined;
+    if (!defaultPath) {
+      try {
+        const downloads = await downloadDir();
+        if (downloads) defaultPath = downloads;
+      } catch {
+        /* browser preview without Tauri path APIs */
+      }
+    }
     const selected = await open({
       directory: true,
       multiple: false,
+      defaultPath,
+      title: "Save received files to…",
     });
     if (typeof selected === "string") {
       setOutDir(selected);
+      setError(null);
+      return true;
     }
+    return outDir.trim().length > 0;
   }
 
   function removePath(path: string) {
@@ -635,6 +717,10 @@ function App() {
   }
 
   async function onStart() {
+    if (mode === "receive" && !outDir.trim()) {
+      const picked = await promptReceiveFolder();
+      if (!picked) return;
+    }
     if (!canStart) return;
 
     setError(null);
@@ -662,11 +748,20 @@ function App() {
     }
 
     try {
+      const receiveCode =
+        mode === "receive" ? sanitizeCodePhrase(codeInput.trim())?.code : null;
+      if (mode === "receive" && !receiveCode) {
+        setError(
+          "Enter a valid croc code phrase (letters, numbers, and hyphens only).",
+        );
+        setPhase("idle");
+        return;
+      }
       await invoke("start_transfer", {
         request: {
           mode: mode === "send" ? "send" : "receive",
           paths: mode === "send" ? paths : [],
-          code: mode === "receive" ? codeInput.trim() : null,
+          code: receiveCode,
           outDir: mode === "receive" ? outDir || null : null,
           options: {
             customCode: options.customCode.trim() || null,
@@ -689,11 +784,35 @@ function App() {
     }
   }
 
+  async function endTransferSession(clearLog: boolean) {
+    try {
+      // Always kill silently — UI sets idle below; cancel_transfer is for the Cancel button only.
+      await invoke("reset_transfer");
+    } catch (err) {
+      setError(String(err));
+    }
+    if (clearLog) {
+      setLog([]);
+    }
+    setCopied(null);
+    setProgress(emptyProgress());
+    lastProgressAt.current = null;
+    setPhase("idle");
+  }
+
   async function onCancel() {
     try {
       await invoke("cancel_transfer");
     } catch (err) {
       setError(String(err));
+    }
+  }
+
+  async function onClearLog() {
+    await endTransferSession(true);
+    setError(null);
+    if (mode === "send") {
+      setPhrase(null);
     }
   }
 
@@ -755,13 +874,20 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [running, canStart, mode, paths, codeInput, outDir, options, phase, aboutOpen]);
 
-  function switchMode(next: Mode) {
-    if (running || next === mode) return;
-    setMode(next);
+  async function switchMode(next: Mode) {
+    if (next === mode) return;
+    await endTransferSession(false);
     setError(null);
-    setPhase("idle");
     setDragOver(false);
     setCodeDragOver(false);
+    if (next === "send") {
+      setPhrase(null);
+      setMode("send");
+      return;
+    }
+    const picked = await promptReceiveFolder();
+    if (!picked) return;
+    setMode("receive");
   }
 
   return (
@@ -785,7 +911,7 @@ function App() {
               role="tab"
               aria-selected={mode === "send"}
               className={mode === "send" ? "active" : ""}
-              onClick={() => switchMode("send")}
+              onClick={() => void switchMode("send")}
               disabled={running}
             >
               Send
@@ -795,7 +921,7 @@ function App() {
               role="tab"
               aria-selected={mode === "receive"}
               className={mode === "receive" ? "active" : ""}
-              onClick={() => switchMode("receive")}
+              onClick={() => void switchMode("receive")}
               disabled={running}
             >
               Receive
@@ -934,6 +1060,25 @@ function App() {
         ) : (
           <section className="panel" aria-labelledby="receive-heading">
             <h2 id="receive-heading">Receive</h2>
+            <div className="receive-destination">
+              <div className="receive-destination-copy">
+                <span className="receive-destination-label">Save to</span>
+                <span
+                  className="receive-destination-path"
+                  title={outDir || undefined}
+                >
+                  {outDir.trim() ? outDir : "Choose a folder to continue"}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => void promptReceiveFolder()}
+                disabled={running}
+              >
+                Change folder
+              </button>
+            </div>
             <label
               className={`field code-field${codeDragOver ? " drag-over" : ""}`}
               onDragEnter={(e) => {
@@ -968,6 +1113,17 @@ function App() {
                 const text =
                   e.dataTransfer.getData("text/plain") ||
                   e.dataTransfer.getData("text");
+                if (
+                  applyReceivePaste(
+                    text,
+                    setCodeInput,
+                    setOptions,
+                    setRememberRelayPass,
+                    setError,
+                  )
+                ) {
+                  return;
+                }
                 const next = normalizeCodePhrase(text);
                 if (next) {
                   setCodeInput(next);
@@ -986,15 +1142,16 @@ function App() {
                 spellCheck={false}
                 onPaste={(e) => {
                   const text = e.clipboardData.getData("text");
-                  const next = normalizeCodePhrase(text);
                   if (
-                    next &&
-                    (/^croc\s+/i.test(text.trim()) ||
-                      text.includes("\n") ||
-                      text.trim() !== next)
+                    applyReceivePaste(
+                      text,
+                      setCodeInput,
+                      setOptions,
+                      setRememberRelayPass,
+                      setError,
+                    )
                   ) {
                     e.preventDefault();
-                    setCodeInput(next);
                   }
                 }}
                 onKeyDown={(e) => {
@@ -1005,24 +1162,24 @@ function App() {
                 }}
               />
             </label>
-            <label className="field">
-              <span>Download folder</span>
-              <div className="row grow">
-                <input
-                  value={outDir}
-                  onChange={(e) => setOutDir(e.target.value)}
-                  placeholder={
-                    options.zipAfterReceive
-                      ? "Required when zipping after receive"
-                      : "Optional — remembered between launches"
-                  }
-                  disabled={running}
-                />
-                <button type="button" onClick={pickOutDir} disabled={running}>
-                  Browse
-                </button>
-              </div>
-            </label>
+            <p className="hint receive-web-hint">
+              Start receive here first, then send at{" "}
+              <a href="https://getcroc.com/" target="_blank" rel="noreferrer">
+                getcroc.com
+              </a>{" "}
+              with the same code. Uses relay{" "}
+              <code>{GETCROC_RELAY}</code> when Options relay is blank.
+            </p>
+            {mode === "receive" &&
+              (options.local ||
+                options.relay.trim() ||
+                options.relayPass.trim()) && (
+                <p className="banner warn" role="status">
+                  Custom relay, relay password, or LAN-only is enabled —{" "}
+                  <strong>getcroc.com</strong> uses the public relay. Clear those
+                  options to receive from the website.
+                </p>
+              )}
           </section>
         )}
 
@@ -1359,8 +1516,8 @@ function App() {
                   ? "Start transfer (⌘/Ctrl+Enter)"
                   : mode === "send"
                     ? "Add files to send"
-                    : options.zipAfterReceive && !outDir.trim()
-                      ? "Choose a download folder for zip-after-receive"
+                    : !outDir.trim()
+                      ? "Choose a download folder"
                       : "Enter a code phrase"
               }
             >
@@ -1429,10 +1586,9 @@ function App() {
               <button
                 type="button"
                 className="ghost"
-                onClick={() => setLog([])}
-                disabled={running}
+                onClick={() => void onClearLog()}
               >
-                Clear log
+                {phase === "idle" ? "Clear log" : "Clear & reset"}
               </button>
             )}
           </div>
@@ -1484,7 +1640,7 @@ function App() {
             className="linkish"
             onClick={() => void openUrl("https://github.com/interfluve-wav")}
           >
-            Suhaas (interfluve-wav)
+            interfluve-wav
           </button>
           {" · "}
           <button
@@ -1530,7 +1686,6 @@ function App() {
               <div>
                 <dt>GUI author</dt>
                 <dd>
-                  Suhaas /{" "}
                   <button
                     type="button"
                     className="linkish"
@@ -1554,7 +1709,17 @@ function App() {
             <p className="about-blurb">
               Desktop wrapper around upstream croc — transfer protocol and CLI
               by Zack Scholl (schollz), not a reimplementation. This GUI is built
-              and maintained by Suhaas (interfluve-wav).
+              and maintained by{" "}
+              <button
+                type="button"
+                className="linkish"
+                onClick={() =>
+                  void openUrl("https://github.com/interfluve-wav")
+                }
+              >
+                interfluve-wav
+              </button>
+              .
             </p>
             <div className="row">
               <button

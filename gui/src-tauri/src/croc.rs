@@ -7,6 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
+/// Public croc relay used by getcroc.com (must match for web → app transfers).
+pub const DEFAULT_RELAY: &str = "croc.schollz.com:9009";
+pub const DEFAULT_RELAY_PASS: &str = "pass123";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferOptions {
@@ -350,36 +354,100 @@ pub fn normalize_proxy_url(raw: &str, scheme: &str) -> String {
     )
 }
 
+/// Normalize receive code: lowercase ASCII letters, digits, hyphens only.
+pub fn sanitize_code_phrase(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Enter a receive code phrase".into());
+    }
+    let mut normalized = String::new();
+    let mut removed_non_ascii = false;
+    for ch in trimmed.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' {
+            normalized.push(ch.to_ascii_lowercase());
+        } else if !ch.is_whitespace() {
+            removed_non_ascii = true;
+        }
+    }
+    if normalized.len() < 4 {
+        return Err(
+            "Code phrase looks invalid — use only letters, numbers, and hyphens (e.g. mango-lake-42)."
+                .into(),
+        );
+    }
+    if removed_non_ascii {
+        return Err(format!(
+            "Code phrase contained invalid characters — try again with only the croc words (got \"{normalized}\" after cleanup)."
+        ));
+    }
+    Ok(normalized)
+}
+
+/// Relay settings for croc spawn. Receive with no custom relay always uses getcroc defaults.
+pub fn resolve_relay_options(
+    opts: &TransferOptions,
+    mode: &TransferMode,
+) -> (Option<String>, Option<String>) {
+    if opts.local {
+        return (None, None);
+    }
+    let relay = opts
+        .relay
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let pass = opts
+        .pass
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+
+    match mode {
+        TransferMode::Receive => match relay {
+            Some(r) => (
+                Some(r.to_string()),
+                Some(pass.unwrap_or(DEFAULT_RELAY_PASS).to_string()),
+            ),
+            // Ignore orphan saved relay password when relay host is empty — matches getcroc.com.
+            None => (
+                Some(DEFAULT_RELAY.to_string()),
+                Some(DEFAULT_RELAY_PASS.to_string()),
+            ),
+        },
+        TransferMode::Send => match (relay, pass) {
+            (Some(r), Some(p)) => (Some(r.to_string()), Some(p.to_string())),
+            (Some(r), None) => (Some(r.to_string()), Some(DEFAULT_RELAY_PASS.to_string())),
+            (None, Some(p)) => (None, Some(p.to_string())),
+            (None, None) => (None, None),
+        },
+    }
+}
+
 pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     let opts = &req.options;
+    let is_receive = matches!(req.mode, TransferMode::Receive);
 
-    if opts.yes {
+    if opts.yes || is_receive {
         args.push("--yes".into());
     }
-    if opts.overwrite {
+    if opts.overwrite || is_receive {
         args.push("--overwrite".into());
+    }
+    if is_receive {
+        args.push("--ignore-stdin".into());
     }
     if opts.local {
         args.push("--local".into());
     }
-    if let Some(pass) = opts
-        .pass
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
+    let (relay, pass) = resolve_relay_options(opts, &req.mode);
+    if let Some(pass) = pass {
         args.push("--pass".into());
-        args.push(pass.to_string());
+        args.push(pass);
     }
-    if let Some(relay) = opts
-        .relay
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(relay) = relay {
         args.push("--relay".into());
-        args.push(relay.to_string());
+        args.push(relay);
     }
     if let Some(socks5) = opts
         .socks5
@@ -442,6 +510,7 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| "Enter a receive code phrase".to_string())?;
+            sanitize_code_phrase(code)?;
             if opts.zip_after_receive {
                 let out = req
                     .out_dir
@@ -454,16 +523,14 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
                     );
                 }
             }
-            if let Some(out) = req
+            let out = req
                 .out_dir
                 .as_ref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
-            {
-                args.push("--out".into());
-                args.push(out.to_string());
-            }
-            args.push(code.to_string());
+                .ok_or_else(|| "Choose a download folder for received files".to_string())?;
+            args.push("--out".into());
+            args.push(out.to_string());
         }
     }
 
@@ -745,6 +812,8 @@ mod tests {
             vec![
                 "--yes",
                 "--overwrite",
+                "--pass",
+                "pass123",
                 "--relay",
                 "relay.example:9009",
                 "send",
@@ -905,7 +974,14 @@ mod tests {
         let args = build_args(&req).unwrap();
         assert_eq!(
             args,
-            vec!["--local", "--out", "/tmp/inbox", "mango-lake-42"]
+            vec![
+                "--yes",
+                "--overwrite",
+                "--ignore-stdin",
+                "--local",
+                "--out",
+                "/tmp/inbox",
+            ]
         );
     }
 
@@ -945,7 +1021,47 @@ mod tests {
             options: opts(),
         };
         let args = build_args(&req).unwrap();
-        assert_eq!(args, vec!["--out", "/tmp/inbox", "alpha-bravo"]);
+        assert_eq!(
+            args,
+            vec![
+                "--yes",
+                "--overwrite",
+                "--ignore-stdin",
+                "--pass",
+                DEFAULT_RELAY_PASS,
+                "--relay",
+                DEFAULT_RELAY,
+                "--out",
+                "/tmp/inbox",
+            ]
+        );
+    }
+
+    #[test]
+    fn receive_ignores_orphan_saved_relay_password() {
+        let mut options = opts();
+        options.pass = Some("wrong-password".into());
+        let req = StartTransferRequest {
+            mode: TransferMode::Receive,
+            paths: vec![],
+            code: Some("mango-lake-42".into()),
+            out_dir: Some("/tmp/inbox".into()),
+            options,
+        };
+        let args = build_args(&req).unwrap();
+        assert!(args.contains(&"--pass".to_string()));
+        assert!(args.contains(&DEFAULT_RELAY_PASS.to_string()));
+        assert!(args.contains(&DEFAULT_RELAY.to_string()));
+        assert!(!args.contains(&"wrong-password".to_string()));
+    }
+
+    #[test]
+    fn sanitize_code_phrase_normalizes() {
+        assert_eq!(
+            sanitize_code_phrase("Mango-Lake-42").unwrap(),
+            "mango-lake-42"
+        );
+        assert!(sanitize_code_phrase("bad ä code").is_err());
     }
 
     #[test]
@@ -958,6 +1074,17 @@ mod tests {
             code: Some("alpha-bravo".into()),
             out_dir: None,
             options,
+        };
+        assert!(build_args(&req).is_err());
+    }
+
+    fn receive_requires_out_dir() {
+        let req = StartTransferRequest {
+            mode: TransferMode::Receive,
+            paths: vec![],
+            code: Some("alpha-bravo".into()),
+            out_dir: None,
+            options: opts(),
         };
         assert!(build_args(&req).is_err());
     }

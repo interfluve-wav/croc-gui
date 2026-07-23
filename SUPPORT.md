@@ -11,7 +11,7 @@
 ## Credits & sponsorship
 
 - **croc** (transfer engine): [schollz/croc](https://github.com/schollz/croc) by Zack Scholl — please **[sponsor schollz](https://github.com/sponsors/schollz)** if you rely on croc.
-- **Croc GUI** (this app): built and maintained by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [repo](https://github.com/interfluve-wav/croc-gui) · [suhaaschitturi.com](https://suhaaschitturi.com)
+- **Croc GUI** (this app): built and maintained by [**interfluve-wav**](https://github.com/interfluve-wav) — [repo](https://github.com/interfluve-wav/croc-gui)
 
 Croc GUI is an independent wrapper. Supporting upstream keeps the engine healthy for everyone.
 
