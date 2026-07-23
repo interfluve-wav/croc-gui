@@ -30,4 +30,16 @@ Marketing images for the repo README, social posts, and GitHub branding.
 
 ## Promo copy
 
-Paste-ready Twitter and Reddit posts live in [`docs/promo/`](../promo/).
+Paste-ready posts live in [`docs/promo/`](../promo/):
+
+| Platform | File |
+|----------|------|
+| Twitter / X | [`twitter.md`](../promo/twitter.md) |
+| Reddit | [`reddit.md`](../promo/reddit.md) |
+| Mastodon | [`mastodon.md`](../promo/mastodon.md) |
+| Hacker News | [`hackernews.md`](../promo/hackernews.md) |
+| LinkedIn | [`linkedin.md`](../promo/linkedin.md) |
+| Product Hunt | [`producthunt.md`](../promo/producthunt.md) |
+| dev.to | [`devto.md`](../promo/devto.md) |
+
+Launch order and repo polish: [`docs/DISTRIBUTION.md`](../DISTRIBUTION.md).
