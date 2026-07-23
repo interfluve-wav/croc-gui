@@ -1,8 +1,8 @@
 mod croc;
 
 use croc::{
-    extract_code_phrase, list_top_level_names, resolve_croc_bin, zip_new_entries,
-    StartTransferRequest, TransferMode,
+    extract_code_phrase, list_top_level_names, make_send_zip_workdir, resolve_croc_bin,
+    zip_new_entries, StartTransferRequest, TransferMode,
 };
 use serde::Serialize;
 use std::collections::HashSet;
@@ -21,6 +21,8 @@ struct PendingZip {
 struct TransferState {
     child: Mutex<Option<Child>>,
     pending_zip: Mutex<Option<PendingZip>>,
+    /// Temp cwd for `croc send --zip` (croc writes FolderName.zip into cwd).
+    send_zip_workdir: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -110,7 +112,30 @@ fn start_transfer(
         *zip_guard = pending_zip;
     }
 
+    // croc --zip writes FolderName.zip into cwd; GUI cwd is often `/` (fails) or
+    // reuses a leftover zip name (fails). Use a fresh writable temp dir for send+zip.
+    let send_zip_workdir =
+        if matches!(request.mode, TransferMode::Send) && request.options.zip {
+            Some(make_send_zip_workdir()?)
+        } else {
+            None
+        };
+    {
+        let mut work_guard = state.send_zip_workdir.lock().map_err(|e| e.to_string())?;
+        *work_guard = send_zip_workdir.clone();
+    }
+
     if matches!(request.mode, TransferMode::Send) {
+        if request.options.zip {
+            let _ = app.emit(
+                "transfer-line",
+                TransferLinePayload {
+                    stream: "stdout".into(),
+                    line: "Zip before send enabled — archiving folder(s) via croc --zip…".into(),
+                    code: None,
+                },
+            );
+        }
         if let Some(code) = request
             .options
             .custom_code
@@ -136,7 +161,9 @@ fn start_transfer(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if let Some(out) = request
+    if let Some(ref work) = send_zip_workdir {
+        command.current_dir(work);
+    } else if let Some(out) = request
         .out_dir
         .as_ref()
         .map(|s| s.trim())
@@ -146,10 +173,11 @@ fn start_transfer(
     }
 
     let mut child = command.spawn().map_err(|e| {
-        // Clear pending zip if spawn fails
+        // Clear pending state if spawn fails
         if let Ok(mut zip_guard) = state.pending_zip.lock() {
             *zip_guard = None;
         }
+        clear_send_zip_workdir(&state);
         format!(
             "Failed to start croc ({}): {e}. Check the bundled binary.",
             program.display()
@@ -221,6 +249,7 @@ fn start_transfer(
                         } else if let Ok(mut zip_guard) = state.pending_zip.lock() {
                             *zip_guard = None;
                         }
+                        clear_send_zip_workdir(&state);
 
                         let _ = app_wait.emit(
                             "transfer-exit",
@@ -238,6 +267,7 @@ fn start_transfer(
                         if let Ok(mut zip_guard) = state.pending_zip.lock() {
                             *zip_guard = None;
                         }
+                        clear_send_zip_workdir(&state);
                         let _ = app_wait.emit(
                             "transfer-exit",
                             TransferExitPayload {
@@ -309,12 +339,23 @@ fn maybe_zip_after_receive(app: &AppHandle) {
     }
 }
 
+fn clear_send_zip_workdir(state: &TransferState) {
+    let dir = match state.send_zip_workdir.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(_) => return,
+    };
+    if let Some(dir) = dir {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 #[tauri::command]
 fn cancel_transfer(app: AppHandle, state: State<'_, TransferState>) -> Result<(), String> {
     {
         let mut zip_guard = state.pending_zip.lock().map_err(|e| e.to_string())?;
         *zip_guard = None;
     }
+    clear_send_zip_workdir(&state);
     let mut guard = state.child.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
@@ -339,6 +380,7 @@ pub fn run() {
         .manage(TransferState {
             child: Mutex::new(None),
             pending_zip: Mutex::new(None),
+            send_zip_workdir: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             croc_bin_status,

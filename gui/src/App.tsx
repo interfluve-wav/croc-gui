@@ -807,6 +807,12 @@ function App() {
                     Zip folder before sending (--zip)
                   </label>
                 )}
+                {mode === "send" && options.zip && (
+                  <p className="check-hint">
+                    Only applies to folders (Add folder / drop a directory). Individual
+                    files are sent as-is — turn Zip off or add a folder.
+                  </p>
+                )}
                 {mode === "receive" && (
                   <label className="check">
                     <input

@@ -98,6 +98,36 @@ pub fn resolve_croc_bin(resource_dir: Option<&Path>) -> Result<PathBuf, String> 
     ))
 }
 
+/// True when any non-empty path is an existing directory.
+/// `croc send --zip` only zips folders; files are sent as-is.
+pub fn paths_include_directory(paths: &[String]) -> bool {
+    paths.iter().any(|p| {
+        let trimmed = p.trim();
+        !trimmed.is_empty() && Path::new(trimmed).is_dir()
+    })
+}
+
+/// croc writes `FolderName.zip` into the process cwd. GUI apps often start with
+/// cwd `/` (not writable) or collide with a leftover zip — use a fresh temp dir.
+pub fn make_send_zip_workdir() -> Result<PathBuf, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!(
+        "croc-gui-send-zip-{}-{}",
+        std::process::id(),
+        millis
+    ));
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "Cannot create zip work directory {}: {e}",
+            dir.display()
+        )
+    })?;
+    Ok(dir)
+}
+
 pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     let opts = &req.options;
@@ -121,8 +151,16 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
             if req.paths.is_empty() {
                 return Err("Select at least one file or folder to send".into());
             }
+            // `--zip` is a no-op for files-only selections; fail early with a clear message.
+            if opts.zip && !paths_include_directory(&req.paths) {
+                return Err(
+                    "Zip before sending only works with folders. Add a folder, or turn off Zip."
+                        .into(),
+                );
+            }
             args.push("send".into());
             if opts.zip {
+                // Must appear after `send` and before paths (croc send --zip …).
                 args.push("--zip".into());
             }
             if let Some(code) = opts
@@ -348,15 +386,68 @@ mod tests {
     fn send_with_zip_flag() {
         let mut options = opts();
         options.zip = true;
+        // Use a real directory so paths_include_directory passes.
+        let folder = std::env::temp_dir().join(format!(
+            "croc-gui-zip-flag-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
         let req = StartTransferRequest {
             mode: TransferMode::Send,
-            paths: vec!["/tmp/folder".into()],
+            paths: vec![folder.display().to_string()],
             code: None,
             out_dir: None,
             options,
         };
         let args = build_args(&req).unwrap();
-        assert_eq!(args, vec!["send", "--zip", "/tmp/folder"]);
+        assert_eq!(
+            args,
+            vec!["send".into(), "--zip".into(), folder.display().to_string()]
+        );
+        assert!(
+            args.iter().position(|a| a == "send").unwrap()
+                < args.iter().position(|a| a == "--zip").unwrap()
+        );
+        assert!(
+            args.iter().position(|a| a == "--zip").unwrap()
+                < args.iter().position(|a| a == &folder.display().to_string()).unwrap()
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn send_zip_rejects_files_only() {
+        let mut options = opts();
+        options.zip = true;
+        let file = std::env::temp_dir().join(format!(
+            "croc-gui-zip-file-{}",
+            std::process::id()
+        ));
+        fs::write(&file, b"x").unwrap();
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec![file.display().to_string()],
+            code: None,
+            out_dir: None,
+            options,
+        };
+        let err = build_args(&req).unwrap_err();
+        assert!(
+            err.to_lowercase().contains("folder"),
+            "expected folder-only error, got: {err}"
+        );
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn make_send_zip_workdir_is_writable() {
+        let dir = make_send_zip_workdir().unwrap();
+        assert!(dir.is_dir());
+        let probe = dir.join("probe.txt");
+        fs::write(&probe, b"ok").unwrap();
+        assert!(probe.is_file());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -368,9 +459,16 @@ mod tests {
         options.custom_code = Some("secret-code".into());
         options.port = Some(9010);
         options.zip = true;
+        let folder = std::env::temp_dir().join(format!(
+            "croc-gui-zip-opts-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).unwrap();
+        let folder_s = folder.display().to_string();
         let req = StartTransferRequest {
             mode: TransferMode::Send,
-            paths: vec!["file.txt".into()],
+            paths: vec![folder_s.clone()],
             code: None,
             out_dir: None,
             options,
@@ -379,19 +477,20 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "--yes",
-                "--overwrite",
-                "--relay",
-                "relay.example:9009",
-                "send",
-                "--zip",
-                "--code",
-                "secret-code",
-                "--port",
-                "9010",
-                "file.txt"
+                "--yes".into(),
+                "--overwrite".into(),
+                "--relay".into(),
+                "relay.example:9009".into(),
+                "send".into(),
+                "--zip".into(),
+                "--code".into(),
+                "secret-code".into(),
+                "--port".into(),
+                "9010".into(),
+                folder_s,
             ]
         );
+        let _ = fs::remove_dir_all(&folder);
     }
 
     #[test]
