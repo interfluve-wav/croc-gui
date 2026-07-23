@@ -90,9 +90,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p src-tauri/bin
-          META_URL="https://api.github.com/repos/schollz/croc/releases/latest"
           ASSET_SUFFIX="${{ matrix.croc_asset }}"
-          DOWNLOAD_URL=$(curl -fsSL "$META_URL" | node -e '
+          DOWNLOAD_URL=$(gh api repos/schollz/croc/releases/latest | node -e '
             const fs = require("fs");
             const data = JSON.parse(fs.readFileSync(0, "utf8"));
             const suffix = process.env.ASSET_SUFFIX;
@@ -130,6 +129,7 @@ jobs:
           ls -la src-tauri/bin/
         env:
           ASSET_SUFFIX: ${{ matrix.croc_asset }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Frontend typecheck + build
         run: npm run build
