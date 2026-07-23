@@ -33,6 +33,35 @@
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/screenshots/send-main.png" alt="Croc GUI — Send tab with drag-and-drop file picker" width="720" />
+</p>
+
+<p align="center">
+  <em>Send mode — drag-and-drop files or folders, then share the code phrase or QR.</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/screenshots/options-expanded.png" alt="Croc GUI — Options panel with relay, local-only, and zip settings" width="720" />
+</p>
+
+<p align="center">
+  <em>Options — custom code, relay, local-only LAN mode, zip, and advanced network settings.</em>
+</p>
+
+<details>
+<summary>Architecture diagram</summary>
+
+![Architecture: UI → Tauri → croc CLI](docs/images/architecture.svg)
+
+</details>
+
+> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For Twitter/Reddit posts, attach `docs/images/screenshots/send-main.png` or the brand assets in [`docs/images/`](docs/images/) (`banner-square.png`, `banner-community.png`) — see [`docs/promo/`](docs/promo/) for paste-ready copy.
+
+---
+
 ## Unofficial community project
 
 > **Croc GUI is an unofficial, community-built desktop wrapper** around [schollz/croc](https://github.com/schollz/croc). It is **not** affiliated with, maintained by, or endorsed by Zack Scholl (schollz) or the upstream croc project unless they say so explicitly.
@@ -70,20 +99,6 @@ Drag and drop files, share a **QR code** or code phrase, or run **local-only LAN
 | **Croc GUI** (this desktop app) | Built by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) · [suhaaschitturi.com](https://suhaaschitturi.com) |
 
 This repository is an **unofficial** GUI wrapper around upstream croc — not a claim of authorship over the protocol or CLI, and not an official schollz product.
-
----
-
-## Screenshots
-
-<p align="center">
-  <img src="docs/images/banner-minimal.png" alt="Croc GUI — drag-and-drop send and receive" width="100%" />
-</p>
-
-Real window captures belong in [`docs/images/`](docs/images/) (`send.png`, `receive.png` — see [capture guide](docs/images/README.md)). Until those land, here is how the stack fits together:
-
-![Architecture: UI → Tauri → croc CLI](docs/images/architecture.svg)
-
-> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For Twitter/Reddit posts, use the assets in [`docs/images/`](docs/images/) (`banner-square.png`, `banner-community.png`) — see [`docs/promo/`](docs/promo/) for paste-ready copy.
 
 ---
 

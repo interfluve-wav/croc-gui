@@ -64,7 +64,7 @@ Paste-ready copy. **Read each sub's rules before posting.** Most subs limit self
 
 **Suggested subs (pick 1–2, not all):** r/selfhosted · r/macapps · r/linux · r/commandline · r/opensource
 
-**Images:** Upload `docs/images/banner-community.png` as the post image (Reddit prefers native uploads over hotlinked URLs).
+**Images:** Upload `docs/images/screenshots/send-main.png` as the post image (real app window). Alternatives: `docs/images/banner-community.png` or `docs/images/banner-square.png` (Reddit prefers native uploads over hotlinked URLs).
 
 ---
 
@@ -142,7 +142,7 @@ MIT licensed, source on GitHub, CI builds from public workflow. Review `gui/src-
 ![Square](https://raw.githubusercontent.com/interfluve-wav/croc-gui/main/docs/images/banner-square.png)
 ```
 
-**Prefer:** upload `banner-community.png` or `banner-square.png` directly as the post image.
+**Prefer:** upload `docs/images/screenshots/send-main.png` directly as the post image. Brand fallbacks: `banner-community.png` or `banner-square.png`.
 
 ---
 

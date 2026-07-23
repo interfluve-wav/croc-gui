@@ -2,6 +2,12 @@
 
 Desktop GUI for [croc](https://github.com/schollz/croc) built with Tauri 2 + React. Ship-facing overview: [root README](../README.md). Roadmap: [`docs/ROADMAP.md`](../docs/ROADMAP.md).
 
+<p align="center">
+  <img src="../docs/images/screenshots/send-main.png" alt="Croc GUI — Send tab" width="480" />
+</p>
+
+More screenshots: [`docs/images/screenshots/`](../docs/images/screenshots/) (`send-main.png`, `send-overview.png`, `options-expanded.png`).
+
 ### Credits
 
 - **croc** (transfer engine): [schollz/croc](https://github.com/schollz/croc) by Zack Scholl — [Sponsor schollz](https://github.com/sponsors/schollz)

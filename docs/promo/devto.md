@@ -37,12 +37,15 @@ Use this structure for a ~800–1200 word post, or paste the short version below
 - macOS, Windows, Linux
 - Link: https://github.com/interfluve-wav/croc-gui
 
-### 3. Feature tour (screenshots when available)
+### 3. Feature tour (screenshots)
 
-- Send: drag-drop, phrase, QR
-- Receive: paste code, pick folder
-- Options: local-only, relay, zip, proxy
-- Progress and copy-full-command for power users
+Embed from `docs/images/screenshots/`:
+
+- `send-main.png` — Send: drag-drop, Start button, status log
+- `options-expanded.png` — Options: local-only, relay, zip, proxy
+- `send-overview.png` — alternate Send crop (optional)
+
+Still to capture: Receive mode with code field / QR.
 
 ### 4. Architecture (brief)
 
@@ -126,7 +129,7 @@ npm run tauri:dev
 
 ## What's next
 
-Relay profiles, local transfer history, README screenshots, and package-manager distribution (Homebrew, winget, Flatpak) — see the [roadmap](https://github.com/interfluve-wav/croc-gui/blob/main/docs/ROADMAP.md).
+Relay profiles, local transfer history, receive-mode screenshots, and package-manager distribution (Homebrew, winget, Flatpak) — see the [roadmap](https://github.com/interfluve-wav/croc-gui/blob/main/docs/ROADMAP.md).
 
 ⭐ [Star on GitHub](https://github.com/interfluve-wav/croc-gui) · 🐛 [Issues](https://github.com/interfluve-wav/croc-gui/issues) · ⬇ [Releases](https://github.com/interfluve-wav/croc-gui/releases)
 ```
@@ -135,7 +138,8 @@ Relay profiles, local transfer history, README screenshots, and package-manager 
 
 ## Publishing checklist
 
-- [ ] Cover image uploaded (`banner-hero.png`)
+- [ ] Inline screenshots from `docs/images/screenshots/` (`send-main.png`, `options-expanded.png`)
+- [ ] Cover image uploaded (`banner-hero.png` or `screenshots/send-main.png`)
 - [ ] Canonical URL set to GitHub repo
 - [ ] Tags: opensource, rust, react, showdev
 - [ ] Cross-link from README promo section (optional)
