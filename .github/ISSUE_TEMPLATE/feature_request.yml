@@ -7,7 +7,6 @@ body:
     attributes:
       value: |
         Features for the **desktop wrapper** go here. New croc protocol capabilities usually belong upstream in [schollz/croc](https://github.com/schollz/croc).
-        See also [`docs/ROADMAP.md`](https://github.com/interfluve-wav/croc-gui/blob/main/docs/ROADMAP.md).
   - type: textarea
     id: problem
     attributes:

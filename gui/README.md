@@ -1,6 +1,6 @@
 # Croc GUI (developer guide)
 
-Desktop GUI for [croc](https://github.com/schollz/croc) built with Tauri 2 + React. Ship-facing overview: [root README](../README.md). Roadmap: [`docs/ROADMAP.md`](../docs/ROADMAP.md).
+Desktop GUI for [croc](https://github.com/schollz/croc) built with Tauri 2 + React. Overview: [root README](../README.md).
 
 ### Credits
 
@@ -133,10 +133,6 @@ Each job downloads the matching `schollz/croc` release asset into `src-tauri/bin
 
 - Upstream **[schollz/croc](https://github.com/schollz/croc)** is MIT (Zack Scholl / contributors). Support the author: **[Sponsor / support schollz](https://github.com/sponsors/schollz)**.
 - This GUI is a separate MIT-licensed wrapper (see repo-root [`LICENSE`](../LICENSE)). Bundled `croc` binaries remain under upstream’s terms.
-
-## Future ideas
-
-Product roadmap (Next up / Later): [`docs/ROADMAP.md`](../docs/ROADMAP.md).
 
 ## Notes
 

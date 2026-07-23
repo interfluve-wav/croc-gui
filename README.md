@@ -40,7 +40,7 @@
 
 </details>
 
-> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For social posts, use brand assets in [`docs/images/`](docs/images/) — see [`docs/promo/`](docs/promo/).
+> **Social preview:** GitHub link previews usually pick up the hero banner at the top of this README. Brand images live in [`docs/images/`](docs/images/).
 
 ---
 
@@ -159,22 +159,12 @@ Cross-platform packaging is covered by [`.github/workflows/build-gui.yml`](.gith
 
 ---
 
-## Roadmap
-
-Product direction (Next up vs Later): [`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-Highlights under consideration: richer progress and history, private-relay profiles, OS share integrations and signed auto-updates, power-user profiles, and accessibility / i18n.
-
-CLI vs GUI gaps, proxies, and relay/local network notes: [`docs/FEATURE_GAP_AND_NETWORK.md`](docs/FEATURE_GAP_AND_NETWORK.md).
-
----
-
 ## Project layout
 
 ```
 croc-gui/
 ├── gui/                 # Tauri 2 + React app
-├── docs/                # Specs, plans, images, roadmap, feature-gap notes
+├── docs/                # Attribution notes and brand images
 ├── .github/             # CI, issue & PR templates
 └── LICENSE
 ```
