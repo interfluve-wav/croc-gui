@@ -1,0 +1,159 @@
+name: Release Croc GUI
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and upload (e.g. v0.1.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS aarch64
+            os: macos-14
+            croc_asset: macOS-ARM64.tar.gz
+            tauri_args: --target aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
+          - name: macOS x86_64
+            os: macos-14
+            croc_asset: macOS-64bit.tar.gz
+            tauri_args: --target x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+          - name: Windows x64
+            os: windows-latest
+            croc_asset: Windows-64bit.zip
+            tauri_args: ""
+            rust_target: ""
+          - name: Linux x64
+            os: ubuntu-22.04
+            croc_asset: Linux-64bit.tar.gz
+            tauri_args: ""
+            rust_target: ""
+
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: gui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Linux WebKit / build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download and stage croc binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/bin
+          META_URL="https://api.github.com/repos/schollz/croc/releases/latest"
+          ASSET_SUFFIX="${{ matrix.croc_asset }}"
+          DOWNLOAD_URL=$(curl -fsSL "$META_URL" | node -e '
+            const fs = require("fs");
+            const data = JSON.parse(fs.readFileSync(0, "utf8"));
+            const suffix = process.env.ASSET_SUFFIX;
+            const asset = (data.assets || []).find((a) => String(a.name).endsWith("_" + suffix));
+            if (!asset) {
+              console.error("Missing asset for", suffix, "in", data.tag_name);
+              process.exit(1);
+            }
+            process.stdout.write(asset.browser_download_url);
+          ')
+          echo "Downloading $DOWNLOAD_URL"
+          curl -fsSL -o /tmp/croc-asset "$DOWNLOAD_URL"
+          rm -rf /tmp/croc-extract
+          mkdir -p /tmp/croc-extract
+          case "$ASSET_SUFFIX" in
+            *.zip)
+              unzip -qo /tmp/croc-asset -d /tmp/croc-extract
+              ;;
+            *)
+              tar -xzf /tmp/croc-asset -C /tmp/croc-extract
+              ;;
+          esac
+          FOUND=$(find /tmp/croc-extract -type f \( -name croc -o -name croc.exe \) | head -n 1)
+          if [ -z "$FOUND" ]; then
+            echo "croc binary not found in archive"
+            find /tmp/croc-extract -maxdepth 3 -print
+            exit 1
+          fi
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cp "$FOUND" src-tauri/bin/croc.exe
+          else
+            cp "$FOUND" src-tauri/bin/croc
+            chmod +x src-tauri/bin/croc
+          fi
+          ls -la src-tauri/bin/
+        env:
+          ASSET_SUFFIX: ${{ matrix.croc_asset }}
+
+      - name: Frontend typecheck + build
+        run: npm run build
+
+      - name: Rust unit tests
+        run: npm run test:rust
+
+      - name: Build and upload to GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: gui
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Croc GUI ${{ env.RELEASE_TAG }}
+          releaseBody: |
+            Desktop GUI for [schollz/croc](https://github.com/schollz/croc).
+
+            ## Downloads
+
+            | Platform | Files |
+            |----------|--------|
+            | macOS | `.dmg` (Apple Silicon and/or Intel) |
+            | Windows | `.msi` and/or NSIS `.exe` |
+            | Linux | `.deb` and/or `.AppImage` |
+
+            Pick the installer for your OS from the assets below.
+
+            **Unofficial community project** — GUI by [interfluve-wav](https://github.com/interfluve-wav). Powered by [schollz/croc](https://github.com/schollz/croc). [Sponsor schollz](https://github.com/sponsors/schollz).
+          args: ${{ matrix.tauri_args }}

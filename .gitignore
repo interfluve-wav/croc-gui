@@ -38,3 +38,13 @@ gui/src-tauri/target/
 .env.*
 !.env.example
 *.pem
+
+# Maintainer reference (local only — run scripts/restore-maintainer-docs.sh)
+/docs/promo/
+/docs/DISTRIBUTION.md
+/docs/ROADMAP.md
+/docs/FEATURE_GAP_AND_NETWORK.md
+/docs/superpowers/
+/docs/images/README.md
+/scripts/capture-*.sh
+/gui/scripts/capture-web.mjs

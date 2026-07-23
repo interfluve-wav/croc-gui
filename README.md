@@ -101,15 +101,17 @@ This repository is an **unofficial** GUI wrapper around upstream croc — not a 
 
 ## Install / download
 
-Prebuilt installers are published on **[GitHub Releases](https://github.com/interfluve-wav/croc-gui/releases)**.
+Prebuilt installers for **macOS, Windows, and Linux** are on **[GitHub Releases](https://github.com/interfluve-wav/croc-gui/releases)** — pick the file for your OS (no build required).
 
-| Platform | Typical artifacts |
-|----------|-------------------|
-| macOS | `.dmg` / `.app` (arm64 and/or x86_64) |
-| Windows | `.msi` / NSIS `.exe` |
-| Linux | `.deb` / `.AppImage` |
+| Platform | Release assets |
+|----------|----------------|
+| macOS | `.dmg` (Apple Silicon and/or Intel) |
+| Windows | `.msi` and/or NSIS `.exe` |
+| Linux | `.deb` and/or `.AppImage` |
 
-CI also uploads per-OS build artifacts from [Build Croc GUI](https://github.com/interfluve-wav/croc-gui/actions/workflows/build-gui.yml) on pushes and pull requests that touch `gui/`.
+Releases are built automatically when a `v*` tag is pushed (see [Release Croc GUI](https://github.com/interfluve-wav/croc-gui/actions/workflows/release-gui.yml)). CI on `main` also runs [Build Croc GUI](https://github.com/interfluve-wav/croc-gui/actions/workflows/build-gui.yml) for pull-request checks.
+
+**Build from source** only if you are developing or need an unreleased change — see [Building from source](#building-from-source) below.
 
 ---
 
