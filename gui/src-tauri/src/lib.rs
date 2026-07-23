@@ -139,31 +139,30 @@ fn start_transfer(
 
     // Zip-before-send: stage any mix of files/folders into one archive, then send that .zip.
     let mut request = request;
-    let send_zip_workdir =
-        if matches!(request.mode, TransferMode::Send) && request.options.zip {
-            let _ = app.emit(
-                "transfer-line",
-                TransferLinePayload {
-                    stream: "stdout".into(),
-                    line: "Zipping all selected items into one archive…".into(),
-                    code: None,
-                },
-            );
-            let (workdir, zip_path) = prepare_send_zip_archive(&request.paths)?;
-            let _ = app.emit(
-                "transfer-line",
-                TransferLinePayload {
-                    stream: "stdout".into(),
-                    line: format!("Created zip: {}", zip_path.display()),
-                    code: None,
-                },
-            );
-            request.paths = vec![zip_path.display().to_string()];
-            request.options.zip = false;
-            Some(workdir)
-        } else {
-            None
-        };
+    let send_zip_workdir = if matches!(request.mode, TransferMode::Send) && request.options.zip {
+        let _ = app.emit(
+            "transfer-line",
+            TransferLinePayload {
+                stream: "stdout".into(),
+                line: "Zipping all selected items into one archive…".into(),
+                code: None,
+            },
+        );
+        let (workdir, zip_path) = prepare_send_zip_archive(&request.paths)?;
+        let _ = app.emit(
+            "transfer-line",
+            TransferLinePayload {
+                stream: "stdout".into(),
+                line: format!("Created zip: {}", zip_path.display()),
+                code: None,
+            },
+        );
+        request.paths = vec![zip_path.display().to_string()];
+        request.options.zip = false;
+        Some(workdir)
+    } else {
+        None
+    };
     {
         let mut work_guard = state.send_zip_workdir.lock().map_err(|e| e.to_string())?;
         *work_guard = send_zip_workdir.clone();
@@ -271,57 +270,55 @@ fn start_transfer(
     }
 
     let app_wait = app.clone();
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(Duration::from_millis(100));
-            let state = app_wait.state::<TransferState>();
-            let mut guard = match state.child.lock() {
-                Ok(g) => g,
-                Err(_) => return,
-            };
-            match guard.as_mut() {
-                Some(child) => match child.try_wait() {
-                    Ok(Some(status)) => {
-                        let code = status.code();
-                        *guard = None;
-                        drop(guard);
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(100));
+        let state = app_wait.state::<TransferState>();
+        let mut guard = match state.child.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        match guard.as_mut() {
+            Some(child) => match child.try_wait() {
+                Ok(Some(status)) => {
+                    let code = status.code();
+                    *guard = None;
+                    drop(guard);
 
-                        if code == Some(0) {
-                            maybe_zip_after_receive(&app_wait);
-                        } else if let Ok(mut zip_guard) = state.pending_zip.lock() {
-                            *zip_guard = None;
-                        }
-                        clear_send_zip_workdir(&state);
+                    if code == Some(0) {
+                        maybe_zip_after_receive(&app_wait);
+                    } else if let Ok(mut zip_guard) = state.pending_zip.lock() {
+                        *zip_guard = None;
+                    }
+                    clear_send_zip_workdir(&state);
 
-                        let _ = app_wait.emit(
-                            "transfer-exit",
-                            TransferExitPayload {
-                                code,
-                                cancelled: false,
-                            },
-                        );
-                        return;
+                    let _ = app_wait.emit(
+                        "transfer-exit",
+                        TransferExitPayload {
+                            code,
+                            cancelled: false,
+                        },
+                    );
+                    return;
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    *guard = None;
+                    drop(guard);
+                    if let Ok(mut zip_guard) = state.pending_zip.lock() {
+                        *zip_guard = None;
                     }
-                    Ok(None) => {}
-                    Err(_) => {
-                        *guard = None;
-                        drop(guard);
-                        if let Ok(mut zip_guard) = state.pending_zip.lock() {
-                            *zip_guard = None;
-                        }
-                        clear_send_zip_workdir(&state);
-                        let _ = app_wait.emit(
-                            "transfer-exit",
-                            TransferExitPayload {
-                                code: None,
-                                cancelled: false,
-                            },
-                        );
-                        return;
-                    }
-                },
-                None => return,
-            }
+                    clear_send_zip_workdir(&state);
+                    let _ = app_wait.emit(
+                        "transfer-exit",
+                        TransferExitPayload {
+                            code: None,
+                            cancelled: false,
+                        },
+                    );
+                    return;
+                }
+            },
+            None => return,
         }
     });
 

@@ -1,16 +1,25 @@
-# Screenshots & assets
+# Screenshots & brand assets
 
-Place marketing screenshots here so the root README can embed them.
+Marketing images for the repo README, social posts, and GitHub branding.
 
-## Recommended filenames
+## Brand assets (ready to use)
+
+| File | Use |
+|------|-----|
+| `logo.png` | App icon, README header, favicon source |
+| `banner-hero.png` | README hero banner (secure cross-platform CLI text) |
+| `banner-minimal.png` | README secondary banner, lighter layouts |
+| `banner-community.png` | Community / social posts (feature bullets) |
+| `banner-square.png` | Twitter, Reddit, square social cards |
+| `architecture.svg` | High-level GUI → Tauri → croc diagram |
+
+## App screenshots (to capture)
 
 | File | Suggested content |
 |------|-------------------|
 | `send.png` | Send mode with files selected and code phrase visible |
 | `receive.png` | Receive mode with code field / QR |
 | `options.png` | Options panel (relay, local-only, zip, etc.) |
-| `logo.png` | App icon (already present) |
-| `architecture.svg` | High-level GUI → Tauri → croc diagram |
 
 ## Capture tips
 
@@ -19,4 +28,6 @@ Place marketing screenshots here so the root README can embed them.
 3. Prefer 2× retina PNGs (~1440×1280 for the default 720×640 window).
 4. Keep personal paths and codes out of screenshots when possible.
 
-Until real shots land, the root README links this folder and shows the architecture diagram.
+## Promo copy
+
+Paste-ready Twitter and Reddit posts live in [`docs/promo/`](../promo/).

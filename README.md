@@ -1,4 +1,10 @@
 <p align="center">
+  <a href="https://github.com/interfluve-wav/croc-gui">
+    <img src="docs/images/banner-hero.png" alt="Croc GUI — secure cross-platform file transfer" width="100%" />
+  </a>
+</p>
+
+<p align="center">
   <img src="docs/images/logo.png" alt="Croc GUI logo" width="96" height="96" />
 </p>
 
@@ -45,9 +51,15 @@ This repository is a GUI wrapper around upstream croc, not a claim of authorship
 
 ## Screenshots
 
+<p align="center">
+  <img src="docs/images/banner-minimal.png" alt="Croc GUI — drag-and-drop send and receive" width="100%" />
+</p>
+
 Real window captures belong in [`docs/images/`](docs/images/) (`send.png`, `receive.png` — see [capture guide](docs/images/README.md)). Until those land, here is how the stack fits together:
 
 ![Architecture: UI → Tauri → croc CLI](docs/images/architecture.svg)
+
+> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For Twitter/Reddit posts, use the assets in [`docs/images/`](docs/images/) (`banner-square.png`, `banner-community.png`) — see [`docs/promo/`](docs/promo/) for paste-ready copy.
 
 ---
 

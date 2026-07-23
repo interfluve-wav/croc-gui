@@ -89,7 +89,11 @@ pub fn resolve_croc_bin(resource_dir: Option<&Path>) -> Result<PathBuf, String> 
     }
 
     // Dev fallback: src-tauri/bin relative to CARGO_MANIFEST_DIR at compile time
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bin").join(binary_name));
+    candidates.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("bin")
+            .join(binary_name),
+    );
 
     for candidate in &candidates {
         if candidate.is_file() {
@@ -118,12 +122,8 @@ pub fn make_send_zip_workdir() -> Result<PathBuf, String> {
         std::process::id(),
         millis
     ));
-    fs::create_dir_all(&dir).map_err(|e| {
-        format!(
-            "Cannot create zip work directory {}: {e}",
-            dir.display()
-        )
-    })?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| format!("Cannot create zip work directory {}: {e}", dir.display()))?;
     Ok(dir)
 }
 
@@ -166,10 +166,8 @@ fn link_or_copy_file(src: &Path, dst: &Path) -> Result<(), String> {
 }
 
 fn stage_directory(src: &Path, dst: &Path) -> Result<(), String> {
-    fs::create_dir_all(dst)
-        .map_err(|e| format!("Cannot create {}: {e}", dst.display()))?;
-    let entries = fs::read_dir(src)
-        .map_err(|e| format!("Cannot read {}: {e}", src.display()))?;
+    fs::create_dir_all(dst).map_err(|e| format!("Cannot create {}: {e}", dst.display()))?;
+    let entries = fs::read_dir(src).map_err(|e| format!("Cannot read {}: {e}", src.display()))?;
     let mut kids: Vec<_> = entries
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Cannot list {}: {e}", src.display()))?;
@@ -215,8 +213,7 @@ pub fn stage_paths_for_zip(paths: &[String], staging_dir: &Path) -> Result<(), S
             .unwrap_or_else(|| "item".to_string());
         let unique = unique_staged_name(staging_dir, &base_name);
         let dst = staging_dir.join(&unique);
-        let meta = fs::metadata(src)
-            .map_err(|e| format!("Cannot stat {}: {e}", src.display()))?;
+        let meta = fs::metadata(src).map_err(|e| format!("Cannot stat {}: {e}", src.display()))?;
         if meta.is_dir() {
             stage_directory(src, &dst)?;
         } else if meta.is_file() {
@@ -238,8 +235,8 @@ pub fn stage_paths_for_zip(paths: &[String], staging_dir: &Path) -> Result<(), S
 
 /// Zip every top-level entry under `staging_dir` into `zip_path`.
 pub fn zip_staging_dir(staging_dir: &Path, zip_path: &Path) -> Result<(), String> {
-    let file = File::create(zip_path)
-        .map_err(|e| format!("Cannot create {}: {e}", zip_path.display()))?;
+    let file =
+        File::create(zip_path).map_err(|e| format!("Cannot create {}: {e}", zip_path.display()))?;
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -366,11 +363,21 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     if opts.local {
         args.push("--local".into());
     }
-    if let Some(pass) = opts.pass.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(pass) = opts
+        .pass
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         args.push("--pass".into());
         args.push(pass.to_string());
     }
-    if let Some(relay) = opts.relay.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(relay) = opts
+        .relay
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         args.push("--relay".into());
         args.push(relay.to_string());
     }
@@ -539,8 +546,8 @@ fn add_path_to_zip(
         let dir_name = path_to_zip_name(base, path)?;
         zip.add_directory(&dir_name, options)
             .map_err(|e| format!("Cannot add directory {dir_name}: {e}"))?;
-        let entries = fs::read_dir(path)
-            .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        let entries =
+            fs::read_dir(path).map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
         let mut kids: Vec<_> = entries
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Cannot list {}: {e}", path.display()))?;
@@ -558,8 +565,7 @@ fn add_path_to_zip(
     let name = path_to_zip_name(base, path)?;
     zip.start_file(&name, options)
         .map_err(|e| format!("Cannot add file {name}: {e}"))?;
-    let mut input =
-        File::open(path).map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
+    let mut input = File::open(path).map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
     let mut buf = Vec::new();
     input
         .read_to_end(&mut buf)
@@ -652,10 +658,7 @@ mod tests {
 
     #[test]
     fn unique_staged_name_avoids_collisions() {
-        let dir = std::env::temp_dir().join(format!(
-            "croc-gui-unique-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("croc-gui-unique-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("photo.jpg"), b"1").unwrap();
@@ -667,10 +670,7 @@ mod tests {
 
     #[test]
     fn prepare_send_zip_archive_files_folders_and_mix() {
-        let root = std::env::temp_dir().join(format!(
-            "croc-gui-prep-src-{}",
-            std::process::id()
-        ));
+        let root = std::env::temp_dir().join(format!("croc-gui-prep-src-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("folder_a")).unwrap();
         fs::write(root.join("folder_a").join("nested.txt"), b"nest").unwrap();
@@ -678,8 +678,8 @@ mod tests {
         fs::write(root.join("other.txt"), b"world").unwrap();
 
         // Files only
-        let (wd1, zip1) = prepare_send_zip_archive(&[root.join("solo.txt").display().to_string()])
-            .unwrap();
+        let (wd1, zip1) =
+            prepare_send_zip_archive(&[root.join("solo.txt").display().to_string()]).unwrap();
         assert!(zip1.is_file());
         assert!(zip1.extension().and_then(|e| e.to_str()) == Some("zip"));
         let _ = fs::remove_dir_all(&wd1);
@@ -793,10 +793,7 @@ mod tests {
     #[test]
     fn normalize_proxy_url_converts_four_part_format() {
         assert_eq!(
-            normalize_proxy_url(
-                "v2.proxyempire.io:5000:r_xxx-sid-yyy:72adfb4c0d",
-                "socks5"
-            ),
+            normalize_proxy_url("v2.proxyempire.io:5000:r_xxx-sid-yyy:72adfb4c0d", "socks5"),
             "socks5://r_xxx-sid-yyy:72adfb4c0d@v2.proxyempire.io:5000"
         );
         assert_eq!(
@@ -1001,7 +998,9 @@ mod tests {
         fs::create_dir_all(tmp.join("subdir")).unwrap();
         fs::write(tmp.join("subdir").join("nested.txt"), b"nest").unwrap();
 
-        let zip_path = zip_new_entries(&tmp, &before).unwrap().expect("zip created");
+        let zip_path = zip_new_entries(&tmp, &before)
+            .unwrap()
+            .expect("zip created");
         assert!(zip_path.is_file());
         assert!(zip_path
             .file_name()
@@ -1016,7 +1015,9 @@ mod tests {
             .collect();
         names.sort();
         assert!(names.iter().any(|n| n == "new.txt"));
-        assert!(names.iter().any(|n| n == "subdir/" || n.starts_with("subdir/")));
+        assert!(names
+            .iter()
+            .any(|n| n == "subdir/" || n.starts_with("subdir/")));
         assert!(!names.iter().any(|n| n == "old.txt"));
 
         let _ = fs::remove_dir_all(&tmp);
