@@ -59,7 +59,7 @@ Real window captures belong in [`docs/images/`](docs/images/) (`send.png`, `rece
 - **Drag-and-drop** send (files/folders) and paste/drop receive codes
 - **Options:** custom code, relay, port, overwrite, auto-confirm (`-yes`)
 - **Local-only** transfers (`croc --local`) — LAN peers, no public relay
-- **Zip on send** (`croc send --zip`) and **zip after receive** (GUI helper)
+- **Zip on send** (GUI packs selection into one archive, then sends it) and **zip after receive** (GUI helper)
 - **Preferences:** remembered download folder and default relay
 - **About** dialog with version and dual attribution (GUI + upstream)
 - Bundled **croc** binary (no PATH dependency at runtime)

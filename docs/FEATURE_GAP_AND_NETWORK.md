@@ -91,7 +91,7 @@ From `TransferOptions` / Options panel / receive flow:
 | Auto-confirm | `--yes` |
 | Overwrite | `--overwrite` |
 | Local-only | `--local` |
-| Zip before send | `send --zip` |
+| Zip before send | GUI stages selection → one `.zip` → `croc send` (not upstream `--zip`) |
 | Zip after receive | GUI post-process (not a croc flag) |
 | Output folder | `--out` |
 | QR for receive phrase | **GUI** (`qrcode` lib) — not `croc send --qr` |

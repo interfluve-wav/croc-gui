@@ -9,7 +9,7 @@ Desktop GUI for [croc](https://github.com/schollz/croc) built with Tauri 2 + Rea
 
 This app is a GUI wrapper around the upstream CLI — send/receive and crypto/relay logic come from croc, not a reimplementation.
 
-Send and receive files with a code phrase. Options: custom code, relay, port, overwrite / auto-confirm, send `--zip`, zip-after-receive, **local-only** (`--local`), phrase QR, drag-and-drop send / paste-or-drop receive code, and remembered download folder / relay.
+Send and receive files with a code phrase. Options: custom code, relay, port, overwrite / auto-confirm, zip-before-send (any files/folders → one archive), zip-after-receive, **local-only** (`--local`), phrase QR, drag-and-drop send / paste-or-drop receive code, and remembered download folder / relay.
 
 ## Prerequisites
 
@@ -114,7 +114,7 @@ Uses Tauri 2 `getCurrentWebview().onDragDropEvent` so dropped files/folders arri
 
 | Mode | Option | Behavior |
 |------|--------|----------|
-| Send | **Zip folder before sending** | Passes upstream `croc send --zip` (zips a folder before transfer). |
+| Send | **Zip all items before sending** | Stages selected files and/or folders into a temp dir, builds one `.zip` (Rust `zip` crate), then `croc send`s that archive. Temp staging is removed when the transfer ends or is cancelled. |
 | Receive | **Zip newly received files after transfer** | After exit 0, the GUI zips only *new* top-level items in the download folder into `croc-received-<timestamp>.zip` (Rust `zip` crate). Requires a download folder. Original received files are left in place. |
 
 Limits: receive zip compares top-level names before/after transfer (not a full croc manifest). Empty receive → no zip. Very large trees may take a moment to pack.

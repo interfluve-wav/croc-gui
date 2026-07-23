@@ -15,7 +15,7 @@ pub struct TransferOptions {
     pub port: Option<u16>,
     pub overwrite: bool,
     pub yes: bool,
-    /// Send-only: pass `croc send --zip` (zip folder before sending).
+    /// Send-only: GUI stages selection into one zip, then `croc send` that archive.
     #[serde(default)]
     pub zip: bool,
     /// Receive-only: after a successful receive, zip newly created items in out_dir.
@@ -98,17 +98,7 @@ pub fn resolve_croc_bin(resource_dir: Option<&Path>) -> Result<PathBuf, String> 
     ))
 }
 
-/// True when any non-empty path is an existing directory.
-/// `croc send --zip` only zips folders; files are sent as-is.
-pub fn paths_include_directory(paths: &[String]) -> bool {
-    paths.iter().any(|p| {
-        let trimmed = p.trim();
-        !trimmed.is_empty() && Path::new(trimmed).is_dir()
-    })
-}
-
-/// croc writes `FolderName.zip` into the process cwd. GUI apps often start with
-/// cwd `/` (not writable) or collide with a leftover zip — use a fresh temp dir.
+/// Fresh temp dir for staging + the zip we send (cleaned up after transfer).
 pub fn make_send_zip_workdir() -> Result<PathBuf, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -126,6 +116,161 @@ pub fn make_send_zip_workdir() -> Result<PathBuf, String> {
         )
     })?;
     Ok(dir)
+}
+
+fn file_stem_and_ext(name: &str) -> (String, String) {
+    let path = Path::new(name);
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| name.to_string());
+    let ext = path
+        .extension()
+        .map(|s| format!(".{}", s.to_string_lossy()))
+        .unwrap_or_default();
+    (stem, ext)
+}
+
+/// Pick a unique basename under `dir` (e.g. `a.txt`, `a (1).txt`, …).
+pub fn unique_staged_name(dir: &Path, original_name: &str) -> String {
+    let candidate = dir.join(original_name);
+    if !candidate.exists() {
+        return original_name.to_string();
+    }
+    let (stem, ext) = file_stem_and_ext(original_name);
+    for n in 1..10_000 {
+        let name = format!("{stem} ({n}){ext}");
+        if !dir.join(&name).exists() {
+            return name;
+        }
+    }
+    format!("{stem}-{}{ext}", std::process::id())
+}
+
+fn link_or_copy_file(src: &Path, dst: &Path) -> Result<(), String> {
+    if fs::hard_link(src, dst).is_ok() {
+        return Ok(());
+    }
+    fs::copy(src, dst)
+        .map_err(|e| format!("Cannot copy {} → {}: {e}", src.display(), dst.display()))?;
+    Ok(())
+}
+
+fn stage_directory(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("Cannot create {}: {e}", dst.display()))?;
+    let entries = fs::read_dir(src)
+        .map_err(|e| format!("Cannot read {}: {e}", src.display()))?;
+    let mut kids: Vec<_> = entries
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Cannot list {}: {e}", src.display()))?;
+    kids.sort_by_key(|e| e.file_name());
+    for entry in kids {
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let meta = entry
+            .metadata()
+            .map_err(|e| format!("Cannot stat {}: {e}", from.display()))?;
+        if meta.is_dir() {
+            stage_directory(&from, &to)?;
+        } else if meta.is_file() {
+            link_or_copy_file(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Place each selected path under `staging_dir` with a unique top-level name.
+pub fn stage_paths_for_zip(paths: &[String], staging_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(staging_dir).map_err(|e| {
+        format!(
+            "Cannot create staging directory {}: {e}",
+            staging_dir.display()
+        )
+    })?;
+
+    let mut staged_any = false;
+    for path in paths {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let src = Path::new(trimmed);
+        if !src.exists() {
+            return Err(format!("Path not found: {}", src.display()));
+        }
+        let base_name = src
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "item".to_string());
+        let unique = unique_staged_name(staging_dir, &base_name);
+        let dst = staging_dir.join(&unique);
+        let meta = fs::metadata(src)
+            .map_err(|e| format!("Cannot stat {}: {e}", src.display()))?;
+        if meta.is_dir() {
+            stage_directory(src, &dst)?;
+        } else if meta.is_file() {
+            link_or_copy_file(src, &dst)?;
+        } else {
+            return Err(format!(
+                "Unsupported path type (not a file or folder): {}",
+                src.display()
+            ));
+        }
+        staged_any = true;
+    }
+
+    if !staged_any {
+        return Err("Select at least one file or folder to send".into());
+    }
+    Ok(())
+}
+
+/// Zip every top-level entry under `staging_dir` into `zip_path`.
+pub fn zip_staging_dir(staging_dir: &Path, zip_path: &Path) -> Result<(), String> {
+    let file = File::create(zip_path)
+        .map_err(|e| format!("Cannot create {}: {e}", zip_path.display()))?;
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    let entries = fs::read_dir(staging_dir)
+        .map_err(|e| format!("Cannot read {}: {e}", staging_dir.display()))?;
+    let mut kids: Vec<_> = entries
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Cannot list {}: {e}", staging_dir.display()))?;
+    kids.sort_by_key(|e| e.file_name());
+    if kids.is_empty() {
+        return Err("Nothing to zip — staging directory is empty".into());
+    }
+    for entry in kids {
+        add_path_to_zip(&mut zip, staging_dir, &entry.path(), options)?;
+    }
+    zip.finish()
+        .map_err(|e| format!("Failed to finish zip {}: {e}", zip_path.display()))?;
+    Ok(())
+}
+
+/// Stage files/folders (any mix), zip them, return `(workdir_to_cleanup, zip_file)`.
+/// Caller should `croc send` the zip path (no `croc --zip`) and remove `workdir` after.
+pub fn prepare_send_zip_archive(paths: &[String]) -> Result<(PathBuf, PathBuf), String> {
+    let workdir = make_send_zip_workdir()?;
+    let staging = workdir.join("staging");
+    if let Err(e) = stage_paths_for_zip(paths, &staging) {
+        let _ = fs::remove_dir_all(&workdir);
+        return Err(e);
+    }
+
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let zip_path = workdir.join(format!("croc-send-{millis}.zip"));
+    if let Err(e) = zip_staging_dir(&staging, &zip_path) {
+        let _ = fs::remove_dir_all(&workdir);
+        return Err(e);
+    }
+    Ok((workdir, zip_path))
 }
 
 pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
@@ -151,18 +296,9 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
             if req.paths.is_empty() {
                 return Err("Select at least one file or folder to send".into());
             }
-            // `--zip` is a no-op for files-only selections; fail early with a clear message.
-            if opts.zip && !paths_include_directory(&req.paths) {
-                return Err(
-                    "Zip before sending only works with folders. Add a folder, or turn off Zip."
-                        .into(),
-                );
-            }
+            // Zip-before-send is handled in start_transfer (self-zip → send .zip file).
+            // Do not pass croc's `--zip` (folder-only).
             args.push("send".into());
-            if opts.zip {
-                // Must appear after `send` and before paths (croc send --zip …).
-                args.push("--zip".into());
-            }
             if let Some(code) = opts
                 .custom_code
                 .as_ref()
@@ -383,61 +519,20 @@ mod tests {
     }
 
     #[test]
-    fn send_with_zip_flag() {
+    fn send_zip_option_does_not_pass_croc_zip_flag() {
+        // Zip-before-send is self-zipped in start_transfer; CLI never gets --zip.
         let mut options = opts();
         options.zip = true;
-        // Use a real directory so paths_include_directory passes.
-        let folder = std::env::temp_dir().join(format!(
-            "croc-gui-zip-flag-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&folder);
-        fs::create_dir_all(&folder).unwrap();
         let req = StartTransferRequest {
             mode: TransferMode::Send,
-            paths: vec![folder.display().to_string()],
+            paths: vec!["/tmp/a.txt".into()],
             code: None,
             out_dir: None,
             options,
         };
         let args = build_args(&req).unwrap();
-        assert_eq!(
-            args,
-            vec!["send".into(), "--zip".into(), folder.display().to_string()]
-        );
-        assert!(
-            args.iter().position(|a| a == "send").unwrap()
-                < args.iter().position(|a| a == "--zip").unwrap()
-        );
-        assert!(
-            args.iter().position(|a| a == "--zip").unwrap()
-                < args.iter().position(|a| a == &folder.display().to_string()).unwrap()
-        );
-        let _ = fs::remove_dir_all(&folder);
-    }
-
-    #[test]
-    fn send_zip_rejects_files_only() {
-        let mut options = opts();
-        options.zip = true;
-        let file = std::env::temp_dir().join(format!(
-            "croc-gui-zip-file-{}",
-            std::process::id()
-        ));
-        fs::write(&file, b"x").unwrap();
-        let req = StartTransferRequest {
-            mode: TransferMode::Send,
-            paths: vec![file.display().to_string()],
-            code: None,
-            out_dir: None,
-            options,
-        };
-        let err = build_args(&req).unwrap_err();
-        assert!(
-            err.to_lowercase().contains("folder"),
-            "expected folder-only error, got: {err}"
-        );
-        let _ = fs::remove_file(&file);
+        assert_eq!(args, vec!["send", "/tmp/a.txt"]);
+        assert!(!args.iter().any(|a| a == "--zip"));
     }
 
     #[test]
@@ -451,6 +546,79 @@ mod tests {
     }
 
     #[test]
+    fn unique_staged_name_avoids_collisions() {
+        let dir = std::env::temp_dir().join(format!(
+            "croc-gui-unique-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("photo.jpg"), b"1").unwrap();
+        assert_eq!(unique_staged_name(&dir, "photo.jpg"), "photo (1).jpg");
+        fs::write(dir.join("photo (1).jpg"), b"2").unwrap();
+        assert_eq!(unique_staged_name(&dir, "photo.jpg"), "photo (2).jpg");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prepare_send_zip_archive_files_folders_and_mix() {
+        let root = std::env::temp_dir().join(format!(
+            "croc-gui-prep-src-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("folder_a")).unwrap();
+        fs::write(root.join("folder_a").join("nested.txt"), b"nest").unwrap();
+        fs::write(root.join("solo.txt"), b"hello").unwrap();
+        fs::write(root.join("other.txt"), b"world").unwrap();
+
+        // Files only
+        let (wd1, zip1) = prepare_send_zip_archive(&[root.join("solo.txt").display().to_string()])
+            .unwrap();
+        assert!(zip1.is_file());
+        assert!(zip1.extension().and_then(|e| e.to_str()) == Some("zip"));
+        let _ = fs::remove_dir_all(&wd1);
+
+        // Folder only
+        let (wd2, zip2) =
+            prepare_send_zip_archive(&[root.join("folder_a").display().to_string()]).unwrap();
+        assert!(zip2.is_file());
+        let file = File::open(&zip2).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(
+            names.iter().any(|n| n.contains("nested.txt")),
+            "expected nested.txt in zip, got {names:?}"
+        );
+        let _ = fs::remove_dir_all(&wd2);
+
+        // Mix + name collision
+        let (wd3, zip3) = prepare_send_zip_archive(&[
+            root.join("solo.txt").display().to_string(),
+            root.join("other.txt").display().to_string(),
+            root.join("folder_a").display().to_string(),
+            root.join("solo.txt").display().to_string(), // collision → solo (1).txt
+        ])
+        .unwrap();
+        assert!(zip3.is_file());
+        let file = File::open(&zip3).unwrap();
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let mut names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        names.sort();
+        assert!(names.iter().any(|n| n == "solo.txt"));
+        assert!(names.iter().any(|n| n == "solo (1).txt"));
+        assert!(names.iter().any(|n| n == "other.txt"));
+        assert!(names.iter().any(|n| n.contains("folder_a")));
+        let _ = fs::remove_dir_all(&wd3);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn send_with_options() {
         let mut options = opts();
         options.yes = true;
@@ -458,17 +626,10 @@ mod tests {
         options.relay = Some("relay.example:9009".into());
         options.custom_code = Some("secret-code".into());
         options.port = Some(9010);
-        options.zip = true;
-        let folder = std::env::temp_dir().join(format!(
-            "croc-gui-zip-opts-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&folder);
-        fs::create_dir_all(&folder).unwrap();
-        let folder_s = folder.display().to_string();
+        options.zip = true; // UI flag; not a croc CLI flag after self-zip
         let req = StartTransferRequest {
             mode: TransferMode::Send,
-            paths: vec![folder_s.clone()],
+            paths: vec!["/tmp/payload.zip".into()],
             code: None,
             out_dir: None,
             options,
@@ -477,20 +638,19 @@ mod tests {
         assert_eq!(
             args,
             vec![
-                "--yes".into(),
-                "--overwrite".into(),
-                "--relay".into(),
-                "relay.example:9009".into(),
-                "send".into(),
-                "--zip".into(),
-                "--code".into(),
-                "secret-code".into(),
-                "--port".into(),
-                "9010".into(),
-                folder_s,
+                "--yes",
+                "--overwrite",
+                "--relay",
+                "relay.example:9009",
+                "send",
+                "--code",
+                "secret-code",
+                "--port",
+                "9010",
+                "/tmp/payload.zip",
             ]
         );
-        let _ = fs::remove_dir_all(&folder);
+        assert!(!args.iter().any(|a| a == "--zip"));
     }
 
     #[test]

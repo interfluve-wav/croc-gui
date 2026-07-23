@@ -1,7 +1,7 @@
 mod croc;
 
 use croc::{
-    extract_code_phrase, list_top_level_names, make_send_zip_workdir, resolve_croc_bin,
+    extract_code_phrase, list_top_level_names, prepare_send_zip_archive, resolve_croc_bin,
     zip_new_entries, StartTransferRequest, TransferMode,
 };
 use serde::Serialize;
@@ -21,7 +21,7 @@ struct PendingZip {
 struct TransferState {
     child: Mutex<Option<Child>>,
     pending_zip: Mutex<Option<PendingZip>>,
-    /// Temp cwd for `croc send --zip` (croc writes FolderName.zip into cwd).
+    /// Temp dir holding staged files + the zip we send (cleaned after transfer).
     send_zip_workdir: Mutex<Option<PathBuf>>,
 }
 
@@ -82,7 +82,46 @@ fn start_transfer(
 
     let resource_dir = app.path().resource_dir().ok();
     let program = resolve_croc_bin(resource_dir.as_deref())?;
-    let args = croc::build_args(&request)?;
+
+    // Zip-before-send: stage any mix of files/folders into one archive, then send that .zip.
+    let mut request = request;
+    let send_zip_workdir =
+        if matches!(request.mode, TransferMode::Send) && request.options.zip {
+            let _ = app.emit(
+                "transfer-line",
+                TransferLinePayload {
+                    stream: "stdout".into(),
+                    line: "Zipping all selected items into one archive…".into(),
+                    code: None,
+                },
+            );
+            let (workdir, zip_path) = prepare_send_zip_archive(&request.paths)?;
+            let _ = app.emit(
+                "transfer-line",
+                TransferLinePayload {
+                    stream: "stdout".into(),
+                    line: format!("Created zip: {}", zip_path.display()),
+                    code: None,
+                },
+            );
+            request.paths = vec![zip_path.display().to_string()];
+            request.options.zip = false;
+            Some(workdir)
+        } else {
+            None
+        };
+    {
+        let mut work_guard = state.send_zip_workdir.lock().map_err(|e| e.to_string())?;
+        *work_guard = send_zip_workdir.clone();
+    }
+
+    let args = match croc::build_args(&request) {
+        Ok(args) => args,
+        Err(err) => {
+            clear_send_zip_workdir(&state);
+            return Err(err);
+        }
+    };
 
     // Prepare post-receive zip snapshot before spawn so we only pack new items.
     let pending_zip = if matches!(request.mode, TransferMode::Receive)
@@ -112,30 +151,7 @@ fn start_transfer(
         *zip_guard = pending_zip;
     }
 
-    // croc --zip writes FolderName.zip into cwd; GUI cwd is often `/` (fails) or
-    // reuses a leftover zip name (fails). Use a fresh writable temp dir for send+zip.
-    let send_zip_workdir =
-        if matches!(request.mode, TransferMode::Send) && request.options.zip {
-            Some(make_send_zip_workdir()?)
-        } else {
-            None
-        };
-    {
-        let mut work_guard = state.send_zip_workdir.lock().map_err(|e| e.to_string())?;
-        *work_guard = send_zip_workdir.clone();
-    }
-
     if matches!(request.mode, TransferMode::Send) {
-        if request.options.zip {
-            let _ = app.emit(
-                "transfer-line",
-                TransferLinePayload {
-                    stream: "stdout".into(),
-                    line: "Zip before send enabled — archiving folder(s) via croc --zip…".into(),
-                    code: None,
-                },
-            );
-        }
         if let Some(code) = request
             .options
             .custom_code
@@ -161,9 +177,7 @@ fn start_transfer(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if let Some(ref work) = send_zip_workdir {
-        command.current_dir(work);
-    } else if let Some(out) = request
+    if let Some(out) = request
         .out_dir
         .as_ref()
         .map(|s| s.trim())

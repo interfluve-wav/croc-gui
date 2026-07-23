@@ -16,7 +16,7 @@ type TransferOptions = {
   port: string;
   overwrite: boolean;
   yes: boolean;
-  /** Send: croc send --zip */
+  /** Send: stage selection into one zip, then croc send that archive */
   zip: boolean;
   /** Receive: zip newly received items after success */
   zipAfterReceive: boolean;
@@ -804,13 +804,13 @@ function App() {
                       }
                       disabled={running}
                     />
-                    Zip folder before sending (--zip)
+                    Zip all items before sending
                   </label>
                 )}
                 {mode === "send" && options.zip && (
                   <p className="check-hint">
-                    Only applies to folders (Add folder / drop a directory). Individual
-                    files are sent as-is — turn Zip off or add a folder.
+                    Packs the whole selection (files, folders, or both) into one
+                    archive, then sends that zip.
                   </p>
                 )}
                 {mode === "receive" && (
