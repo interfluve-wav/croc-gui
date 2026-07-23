@@ -751,6 +751,11 @@ input:focus-visible {
   line-height: 1.4;
 }
 
+.credit-gui {
+  font-size: 0.7rem;
+  opacity: 0.65;
+}
+
 .credit a {
   color: var(--accent);
   text-decoration: underline;

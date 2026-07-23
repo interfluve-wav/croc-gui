@@ -1354,15 +1354,6 @@ function App() {
           </span>
         </div>
         <p className="credit">
-          GUI by{" "}
-          <button
-            type="button"
-            className="linkish"
-            onClick={() => void openUrl("https://github.com/interfluve-wav/croc-gui")}
-          >
-            Suhaas / interfluve-wav
-          </button>
-          {" · "}
           Powered by{" "}
           <button
             type="button"
@@ -1379,6 +1370,9 @@ function App() {
           >
             Sponsor schollz
           </button>
+        </p>
+        <p className="credit credit-gui">
+          GUI by Suhaas · interfluve-wav
         </p>
       </footer>
 
@@ -1414,37 +1408,16 @@ function App() {
                 <dt>Bundled croc</dt>
                 <dd>{crocVersion ?? "Unknown"}</dd>
               </div>
-            </dl>
-            <p className="about-blurb">
-              <strong>Croc GUI</strong> — built by Suhaas / interfluve-wav.
-              Desktop wrapper only; the transfer protocol and CLI remain
-              upstream croc by Zack Scholl (schollz), not a reimplementation.
-            </p>
-            <dl className="about-meta">
               <div>
-                <dt>croc (engine)</dt>
+                <dt>Engine</dt>
                 <dd>schollz/croc</dd>
               </div>
-              <div>
-                <dt>Croc GUI</dt>
-                <dd>Suhaas / interfluve-wav</dd>
-              </div>
             </dl>
+            <p className="about-blurb">
+              Desktop wrapper around upstream croc — transfer protocol and CLI
+              by Zack Scholl (schollz), not a reimplementation.
+            </p>
             <div className="row">
-              <button
-                type="button"
-                onClick={() =>
-                  void openUrl("https://github.com/interfluve-wav/croc-gui")
-                }
-              >
-                This repo
-              </button>
-              <button
-                type="button"
-                onClick={() => void openUrl("https://suhaaschitturi.com")}
-              >
-                suhaaschitturi.com
-              </button>
               <button
                 type="button"
                 onClick={() => void openUrl("https://github.com/schollz/croc")}
