@@ -119,10 +119,21 @@ fn parse_parens_content(content: &str) -> (Option<u64>, Option<u64>, Option<Stri
     (bytes_done, bytes_total, speed)
 }
 
-fn infer_phase(cleaned: &str, percent: Option<u8>) -> Option<String> {
+fn infer_phase(
+    cleaned: &str,
+    percent: Option<u8>,
+    bytes_done: Option<u64>,
+    bytes_total: Option<u64>,
+) -> Option<String> {
     let lower = cleaned.to_ascii_lowercase();
     if lower.contains("checking") {
         return Some("checking".into());
+    }
+    if lower.contains("securing") {
+        return Some("connecting".into());
+    }
+    if is_near_complete(percent, bytes_done, bytes_total) {
+        return Some("finishing".into());
     }
     if lower.contains("receiv") {
         return Some("receiving".into());
@@ -141,6 +152,57 @@ fn infer_phase(cleaned: &str, percent: Option<u8>) -> Option<String> {
         Some(_) => Some("transferring".into()),
         None => None,
     }
+}
+
+/// Croc's progressbar often stays at 99% while hashing / waiting for relay ack.
+fn is_near_complete(
+    percent: Option<u8>,
+    bytes_done: Option<u64>,
+    bytes_total: Option<u64>,
+) -> bool {
+    if percent == Some(100) {
+        return true;
+    }
+    if percent == Some(99) {
+        return true;
+    }
+    if let (Some(done), Some(total)) = (bytes_done, bytes_total) {
+        if total > 0 && done >= total.saturating_sub(total / 100).max(1) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Prefer transfer stats after `%` — croc descriptions include file size in parens
+/// e.g. `Sending 'file.zip' (96 MB)  99% |...| (95 MB/96 MB, 5 MB/s)`.
+fn extract_progress_bytes(cleaned: &str) -> (Option<u64>, Option<u64>, Option<String>) {
+    if let Some(pct_idx) = cleaned.find('%') {
+        let after = &cleaned[pct_idx..];
+        if let Some((d, t, s)) = parse_paren_group(after) {
+            if d.is_some() || t.is_some() || s.is_some() {
+                return (d, t, s);
+            }
+        }
+    }
+
+    for (idx, _) in cleaned.match_indices('(') {
+        let slice = &cleaned[idx..];
+        if let Some((d, t, s)) = parse_paren_group(slice) {
+            if t.is_some() || slice.contains('/') {
+                return (d, t, s);
+            }
+        }
+    }
+
+    parse_paren_group(cleaned).unwrap_or((None, None, None))
+}
+
+fn parse_paren_group(s: &str) -> Option<(Option<u64>, Option<u64>, Option<String>)> {
+    let start = s.find('(')?;
+    let end = s[start + 1..].find(')')?;
+    let inner = &s[start + 1..start + 1 + end];
+    Some(parse_parens_content(inner))
 }
 
 fn extract_label(cleaned: &str, percent_idx: Option<usize>) -> Option<String> {
@@ -171,19 +233,7 @@ pub fn parse_progress_line(line: &str) -> Option<TransferProgress> {
     let percent = extract_percent(&cleaned);
     let percent_idx = cleaned.find('%');
 
-    let mut bytes_done = None;
-    let mut bytes_total = None;
-    let mut speed = None;
-
-    if let Some(start) = cleaned.find('(') {
-        if let Some(end) = cleaned[start + 1..].find(')') {
-            let inner = &cleaned[start + 1..start + 1 + end];
-            let (d, t, s) = parse_parens_content(inner);
-            bytes_done = d;
-            bytes_total = t;
-            speed = s;
-        }
-    }
+    let (bytes_done, bytes_total, mut speed) = extract_progress_bytes(&cleaned);
 
     // Speed can also appear outside parens: `5 MB/s`
     if speed.is_none() {
@@ -195,7 +245,7 @@ pub fn parse_progress_line(line: &str) -> Option<TransferProgress> {
         }
     }
 
-    let phase = infer_phase(&cleaned, percent);
+    let phase = infer_phase(&cleaned, percent, bytes_done, bytes_total);
     let label = extract_label(&cleaned, percent_idx);
 
     if percent.is_none() && bytes_done.is_none() && speed.is_none() && phase.is_none() {
@@ -262,5 +312,39 @@ mod tests {
     fn non_progress_line_returns_none() {
         assert!(parse_progress_line("Code is: mango-lake-42").is_none());
         assert!(parse_progress_line("").is_none());
+    }
+
+    #[test]
+    fn parse_croc_style_description_with_file_size_parens() {
+        let line = "Sending 'croc-send-1784836459526.zip' (96.2 MB)  99% |██████████████████| (96.1 MB/96.2 MB, 12 MB/s)";
+        let p = parse_progress_line(line).unwrap();
+        assert_eq!(p.percent, Some(99));
+        assert_eq!(p.bytes_done, Some(96_100_000));
+        assert_eq!(p.bytes_total, Some(96_200_000));
+        assert_eq!(p.phase.as_deref(), Some("finishing"));
+        assert!(p.label.unwrap().contains("croc-send"));
+    }
+
+    #[test]
+    fn parse_near_complete_without_trailing_bytes() {
+        let line = "Sending 'archive.zip' (10 MB)  99% |██████████████████|";
+        let p = parse_progress_line(line).unwrap();
+        assert_eq!(p.percent, Some(99));
+        assert_eq!(p.phase.as_deref(), Some("finishing"));
+    }
+
+    #[test]
+    fn parse_progress_at_one_hundred_percent() {
+        let line = "Sending 'archive.zip' (10 MB) 100% |████████████████████| (10 MB/10 MB)";
+        let p = parse_progress_line(line).unwrap();
+        assert_eq!(p.percent, Some(100));
+        assert_eq!(p.phase.as_deref(), Some("finishing"));
+    }
+
+    #[test]
+    fn parse_securing_channel_phase() {
+        let line = "securing channel...";
+        let p = parse_progress_line(line).unwrap();
+        assert_eq!(p.phase.as_deref(), Some("connecting"));
     }
 }

@@ -106,7 +106,13 @@ const progressPhaseLabel: Record<string, string> = {
   receiving: "Receiving…",
   transferring: "Transferring…",
   finishing: "Finishing…",
+  waiting: "Waiting for receiver…",
 };
+
+/** After this long at ≥98% with no new output, show "Finishing…" */
+const PROGRESS_FINISHING_MS = 3_000;
+/** After this long at ≥98%, show a hint that croc may still be working */
+const PROGRESS_STALL_HINT_MS = 30_000;
 
 const phaseLabel: Record<Phase, string> = {
   idle: "Ready",
@@ -228,9 +234,11 @@ function App() {
   const [dragOver, setDragOver] = useState(false);
   const [codeDragOver, setCodeDragOver] = useState(false);
   const [progress, setProgress] = useState<ProgressState>(emptyProgress);
+  const [progressTick, setProgressTick] = useState(0);
   const logRef = useRef<HTMLPreElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<number | null>(null);
+  const lastProgressAt = useRef<number | null>(null);
   const modeRef = useRef(mode);
   const runningRef = useRef(false);
   const aboutOpenRef = useRef(aboutOpen);
@@ -368,6 +376,7 @@ function App() {
         "transfer-progress",
         (event) => {
           const p = event.payload;
+          lastProgressAt.current = Date.now();
           setProgress((prev) => ({
             percent: p.percent ?? prev.percent,
             bytesDone: p.bytesDone ?? prev.bytesDone,
@@ -379,6 +388,7 @@ function App() {
         },
       );
       unlistenExit = await listen<ExitEvent>("transfer-exit", (event) => {
+        lastProgressAt.current = null;
         if (event.payload.cancelled) {
           setPhase("cancelled");
           setProgress(emptyProgress());
@@ -407,6 +417,12 @@ function App() {
       unlistenExit?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (phase !== "running") return;
+    const id = window.setInterval(() => setProgressTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [phase]);
 
   useEffect(() => {
     const el = logRef.current;
@@ -453,13 +469,39 @@ function App() {
       progress.speed != null ||
       progress.phase != null);
 
+  const progressStall = useMemo(() => {
+    void progressTick;
+    if (!running || lastProgressAt.current == null) return null;
+    const pct = progress.percent;
+    const nearComplete =
+      pct != null &&
+      (pct >= 98 ||
+        progress.phase === "finishing" ||
+        (progress.bytesDone != null &&
+          progress.bytesTotal != null &&
+          progress.bytesDone >= progress.bytesTotal * 0.99));
+    if (!nearComplete) return null;
+    const age = Date.now() - lastProgressAt.current;
+    if (age >= PROGRESS_STALL_HINT_MS) return "hint";
+    if (age >= PROGRESS_FINISHING_MS) return "finishing";
+    return null;
+  }, [running, progress, progressTick]);
+
   const progressStatus = useMemo(() => {
+    if (progressStall === "hint") {
+      return mode === "send"
+        ? "Waiting for receiver…"
+        : "Verifying transfer…";
+    }
+    if (progressStall === "finishing" || progress.phase === "finishing") {
+      return "Finishing…";
+    }
     if (progress.label) return progress.label;
     if (progress.phase && progressPhaseLabel[progress.phase]) {
       return progressPhaseLabel[progress.phase];
     }
     return phaseLabel[phase];
-  }, [progress.label, progress.phase, phase]);
+  }, [progress.label, progress.phase, progressStall, phase, mode]);
 
   const progressDetail = useMemo(() => {
     const parts: string[] = [];
@@ -523,6 +565,7 @@ function App() {
     setLog([]);
     setCopied(null);
     setProgress(emptyProgress());
+    lastProgressAt.current = Date.now();
     setPhrase(
       mode === "send" && options.customCode.trim()
         ? options.customCode.trim()
@@ -1263,6 +1306,12 @@ function App() {
             </div>
             {progressDetail && (
               <p className="progress-detail">{progressDetail}</p>
+            )}
+            {progressStall === "hint" && (
+              <p className="progress-stall-hint">
+                Croc is still working — verifying data and waiting on the
+                network. Large files can pause here for a minute or more.
+              </p>
             )}
           </section>
         )}

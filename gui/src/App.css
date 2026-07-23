@@ -481,6 +481,13 @@ input:focus-visible {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+.progress-stall-hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--accent) 55%, var(--muted));
+  line-height: 1.45;
+}
+
 .checks {
   display: flex;
   flex-direction: column;
