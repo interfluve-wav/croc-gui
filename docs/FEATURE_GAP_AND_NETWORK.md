@@ -6,7 +6,7 @@ Research note for **Croc GUI** ([interfluve-wav/croc-gui](https://github.com/int
 - **GUI surveyed:** `gui/src/App.tsx`, `gui/src-tauri/src/croc.rs` (TransferOptions / `build_args`)
 - **Upstream docs:** [README](https://github.com/schollz/croc/blob/main/README.md)
 
-This doc is research only. Proxy / advanced network UI is **not** implemented here.
+This doc is research only. **Pass A (v0.2)** added relay password (`--pass`), SOCKS5/HTTP proxy fields (`--socks5`, `--connect`), and live transfer progress parsed from croc output.
 
 ---
 
@@ -87,6 +87,9 @@ From `TransferOptions` / Options panel / receive flow:
 | Send / Receive | Modes + paths / code |
 | Custom code phrase | `--code` (≥ 6 chars) |
 | Relay host | `--relay` (persisted prefs) |
+| Relay password | `--pass` (optional remember with relay) |
+| SOCKS5 / HTTP proxy | `--socks5`, `--connect` (Advanced network; optional remember) |
+| Live transfer progress | Parsed from croc stdout/stderr; progress bar + status |
 | Send base port | `--port` |
 | Auto-confirm | `--yes` |
 | Overwrite | `--overwrite` |
@@ -103,9 +106,9 @@ From `TransferOptions` / Options panel / receive flow:
 
 | Upstream feature | Flag(s) | GUI? | Priority |
 |------------------|---------|------|----------|
-| Relay password | `--pass` / `$CROC_PASS` | No | **P0** — self-hosted / Docker relays need it |
-| SOCKS5 proxy | `--socks5` / `$SOCKS5_PROXY` | No | **P0** — Tor / restricted nets |
-| HTTP proxy | `--connect` / `$HTTP_PROXY` | No | **P1** — corporate nets |
+| Relay password | `--pass` / `$CROC_PASS` | **Yes** (Options; optional remember with relay) |
+| SOCKS5 proxy | `--socks5` / `$SOCKS5_PROXY` | **Yes** (Advanced network) |
+| HTTP proxy | `--connect` / `$HTTP_PROXY` | **Yes** (Advanced network) |
 | Disable local relay | `send --no-local` | No | **P1** — private relay / firewall clarity |
 | Known sender IP | `--ip` | No | **P1** — broken multicast / known peer |
 | IPv6 relay | `--relay6` | No | **P2** |

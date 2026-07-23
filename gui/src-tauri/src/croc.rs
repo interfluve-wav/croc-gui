@@ -24,6 +24,15 @@ pub struct TransferOptions {
     /// Global: force LAN-only connections (`croc --local`), no public relay.
     #[serde(default)]
     pub local: bool,
+    /// Relay password (`croc --pass` / `$CROC_PASS`).
+    #[serde(default)]
+    pub pass: Option<String>,
+    /// SOCKS5 proxy (`croc --socks5` / `$SOCKS5_PROXY`).
+    #[serde(default)]
+    pub socks5: Option<String>,
+    /// HTTP proxy (`croc --connect` / `$HTTP_PROXY`).
+    #[serde(default)]
+    pub connect: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -286,9 +295,31 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     if opts.local {
         args.push("--local".into());
     }
+    if let Some(pass) = opts.pass.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        args.push("--pass".into());
+        args.push(pass.to_string());
+    }
     if let Some(relay) = opts.relay.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
         args.push("--relay".into());
         args.push(relay.to_string());
+    }
+    if let Some(socks5) = opts
+        .socks5
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--socks5".into());
+        args.push(socks5.to_string());
+    }
+    if let Some(connect) = opts
+        .connect
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--connect".into());
+        args.push(connect.to_string());
     }
 
     match req.mode {
@@ -502,6 +533,9 @@ mod tests {
             zip: false,
             zip_after_receive: false,
             local: false,
+            pass: None,
+            socks5: None,
+            connect: None,
         }
     }
 
@@ -651,6 +685,54 @@ mod tests {
             ]
         );
         assert!(!args.iter().any(|a| a == "--zip"));
+    }
+
+    #[test]
+    fn send_with_network_options() {
+        let mut options = opts();
+        options.pass = Some("secret".into());
+        options.relay = Some("relay.example:9009".into());
+        options.socks5 = Some("socks5://127.0.0.1:9050".into());
+        options.connect = Some("http://127.0.0.1:8080".into());
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec!["/tmp/a.txt".into()],
+            code: None,
+            out_dir: None,
+            options,
+        };
+        let args = build_args(&req).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--pass",
+                "secret",
+                "--relay",
+                "relay.example:9009",
+                "--socks5",
+                "socks5://127.0.0.1:9050",
+                "--connect",
+                "http://127.0.0.1:8080",
+                "send",
+                "/tmp/a.txt",
+            ]
+        );
+    }
+
+    #[test]
+    fn empty_proxy_fields_are_omitted() {
+        let mut options = opts();
+        options.socks5 = Some("   ".into());
+        options.connect = Some("".into());
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec!["/tmp/a.txt".into()],
+            code: None,
+            out_dir: None,
+            options,
+        };
+        let args = build_args(&req).unwrap();
+        assert!(!args.iter().any(|a| a == "--socks5" || a == "--connect"));
     }
 
     #[test]

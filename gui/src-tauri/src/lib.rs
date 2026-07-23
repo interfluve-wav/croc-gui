@@ -1,12 +1,14 @@
 mod croc;
+mod progress;
 
 use croc::{
     extract_code_phrase, list_top_level_names, prepare_send_zip_archive, resolve_croc_bin,
     zip_new_entries, StartTransferRequest, TransferMode,
 };
+use progress::parse_progress_line;
 use serde::Serialize;
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader};
+use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -38,6 +40,58 @@ struct TransferLinePayload {
 struct TransferExitPayload {
     code: Option<i32>,
     cancelled: bool,
+}
+
+fn emit_transfer_output(app: &AppHandle, stream: &str, raw_line: &str) {
+    let line = raw_line.trim();
+    if line.is_empty() {
+        return;
+    }
+    let code = extract_code_phrase(line);
+    if let Some(progress) = parse_progress_line(line) {
+        let _ = app.emit("transfer-progress", progress);
+    }
+    let _ = app.emit(
+        "transfer-line",
+        TransferLinePayload {
+            stream: stream.to_string(),
+            line: line.to_string(),
+            code,
+        },
+    );
+}
+
+fn pump_stream<R: Read + Send + 'static>(reader: R, app: AppHandle, stream: String) {
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut buffer = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match reader.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    for &byte in &chunk[..n] {
+                        if byte == b'\n' || byte == b'\r' {
+                            if !buffer.is_empty() {
+                                if let Ok(line) = String::from_utf8(buffer.clone()) {
+                                    emit_transfer_output(&app, &stream, &line);
+                                }
+                                buffer.clear();
+                            }
+                        } else if byte == b'\t' || byte >= 0x20 {
+                            buffer.push(byte);
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        if !buffer.is_empty() {
+            if let Ok(line) = String::from_utf8(buffer) {
+                emit_transfer_output(&app, &stream, &line);
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -208,38 +262,12 @@ fn start_transfer(
 
     let app_out = app.clone();
     if let Some(out) = stdout {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
-                let code = extract_code_phrase(&line);
-                let _ = app_out.emit(
-                    "transfer-line",
-                    TransferLinePayload {
-                        stream: "stdout".into(),
-                        line,
-                        code,
-                    },
-                );
-            }
-        });
+        pump_stream(out, app_out, "stdout".into());
     }
 
     let app_err = app.clone();
     if let Some(err) = stderr {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
-                let code = extract_code_phrase(&line);
-                let _ = app_err.emit(
-                    "transfer-line",
-                    TransferLinePayload {
-                        stream: "stderr".into(),
-                        line,
-                        code,
-                    },
-                );
-            }
-        });
+        pump_stream(err, app_err, "stderr".into());
     }
 
     let app_wait = app.clone();

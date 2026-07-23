@@ -13,7 +13,10 @@ type Mode = "send" | "receive";
 type TransferOptions = {
   customCode: string;
   relay: string;
+  relayPass: string;
   port: string;
+  socks5: string;
+  connect: string;
   overwrite: boolean;
   yes: boolean;
   /** Send: stage selection into one zip, then croc send that archive */
@@ -40,23 +43,69 @@ type Phase = "idle" | "running" | "completed" | "failed" | "cancelled";
 type Prefs = {
   outDir: string;
   relay: string;
+  relayPass: string;
+  rememberRelayPass: boolean;
+  socks5: string;
+  connect: string;
+  rememberProxies: boolean;
+};
+
+type ProgressEvent = {
+  percent: number | null;
+  bytesDone: number | null;
+  bytesTotal: number | null;
+  speed: string | null;
+  phase: string | null;
+  label: string | null;
+};
+
+type ProgressState = {
+  percent: number | null;
+  bytesDone: number | null;
+  bytesTotal: number | null;
+  speed: string | null;
+  phase: string | null;
+  label: string | null;
 };
 
 type CopiedKind = "phrase" | "command" | null;
 
 const GUI_VERSION = "0.1.0";
-const PREFS_KEY = "croc-gui-prefs-v1";
+const PREFS_KEY = "croc-gui-prefs-v2";
+const PREFS_KEY_V1 = "croc-gui-prefs-v1";
 
 const defaultOptions = (): TransferOptions => ({
   customCode: "",
   relay: "",
+  relayPass: "",
   port: "",
+  socks5: "",
+  connect: "",
   overwrite: false,
   yes: true,
   zip: false,
   zipAfterReceive: false,
   local: false,
 });
+
+const emptyProgress = (): ProgressState => ({
+  percent: null,
+  bytesDone: null,
+  bytesTotal: null,
+  speed: null,
+  phase: null,
+  label: null,
+});
+
+const progressPhaseLabel: Record<string, string> = {
+  connecting: "Connecting…",
+  preparing: "Preparing…",
+  checking: "Checking…",
+  sending: "Sending…",
+  receiving: "Receiving…",
+  transferring: "Transferring…",
+  finishing: "Finishing…",
+};
 
 const phaseLabel: Record<Phase, string> = {
   idle: "Ready",
@@ -86,17 +135,46 @@ function normalizeCodePhrase(raw: string): string {
   return (token ?? s).replace(/^['"]+|['"]+$/g, "");
 }
 
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = n;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  const digits = value >= 100 || unit === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)} ${units[unit]}`;
+}
+
 function loadPrefs(): Prefs {
+  const defaults: Prefs = {
+    outDir: "",
+    relay: "",
+    relayPass: "",
+    rememberRelayPass: false,
+    socks5: "",
+    connect: "",
+    rememberProxies: false,
+  };
   try {
-    const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return { outDir: "", relay: "" };
+    const raw =
+      localStorage.getItem(PREFS_KEY) ?? localStorage.getItem(PREFS_KEY_V1);
+    if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<Prefs>;
     return {
       outDir: typeof parsed.outDir === "string" ? parsed.outDir : "",
       relay: typeof parsed.relay === "string" ? parsed.relay : "",
+      relayPass:
+        typeof parsed.relayPass === "string" ? parsed.relayPass : "",
+      rememberRelayPass: parsed.rememberRelayPass === true,
+      socks5: typeof parsed.socks5 === "string" ? parsed.socks5 : "",
+      connect: typeof parsed.connect === "string" ? parsed.connect : "",
+      rememberProxies: parsed.rememberProxies === true,
     };
   } catch {
-    return { outDir: "", relay: "" };
+    return defaults;
   }
 }
 
@@ -117,8 +195,18 @@ function App() {
   const [options, setOptions] = useState<TransferOptions>(() => ({
     ...defaultOptions(),
     relay: initialPrefs.relay,
+    relayPass: initialPrefs.rememberRelayPass ? initialPrefs.relayPass : "",
+    socks5: initialPrefs.rememberProxies ? initialPrefs.socks5 : "",
+    connect: initialPrefs.rememberProxies ? initialPrefs.connect : "",
   }));
+  const [rememberRelayPass, setRememberRelayPass] = useState(
+    initialPrefs.rememberRelayPass,
+  );
+  const [rememberProxies, setRememberProxies] = useState(
+    initialPrefs.rememberProxies,
+  );
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [phrase, setPhrase] = useState<string | null>(null);
@@ -131,6 +219,7 @@ function App() {
   const [crocVersion, setCrocVersion] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [codeDragOver, setCodeDragOver] = useState(false);
+  const [progress, setProgress] = useState<ProgressState>(emptyProgress);
   const logRef = useRef<HTMLPreElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<number | null>(null);
@@ -160,8 +249,24 @@ function App() {
   }, []);
 
   useEffect(() => {
-    savePrefs({ outDir, relay: options.relay });
-  }, [outDir, options.relay]);
+    savePrefs({
+      outDir,
+      relay: options.relay,
+      relayPass: rememberRelayPass ? options.relayPass : "",
+      rememberRelayPass,
+      socks5: rememberProxies ? options.socks5 : "",
+      connect: rememberProxies ? options.connect : "",
+      rememberProxies,
+    });
+  }, [
+    outDir,
+    options.relay,
+    options.relayPass,
+    options.socks5,
+    options.connect,
+    rememberRelayPass,
+    rememberProxies,
+  ]);
 
   // Tauri 2 file drag-drop → absolute paths (required for croc send).
   useEffect(() => {
@@ -241,6 +346,7 @@ function App() {
   useEffect(() => {
     let unlistenLine: (() => void) | undefined;
     let unlistenExit: (() => void) | undefined;
+    let unlistenProgress: (() => void) | undefined;
 
     (async () => {
       unlistenLine = await listen<LineEvent>("transfer-line", (event) => {
@@ -250,13 +356,34 @@ function App() {
           setPhrase(code);
         }
       });
+      unlistenProgress = await listen<ProgressEvent>(
+        "transfer-progress",
+        (event) => {
+          const p = event.payload;
+          setProgress((prev) => ({
+            percent: p.percent ?? prev.percent,
+            bytesDone: p.bytesDone ?? prev.bytesDone,
+            bytesTotal: p.bytesTotal ?? prev.bytesTotal,
+            speed: p.speed ?? prev.speed,
+            phase: p.phase ?? prev.phase,
+            label: p.label ?? prev.label,
+          }));
+        },
+      );
       unlistenExit = await listen<ExitEvent>("transfer-exit", (event) => {
         if (event.payload.cancelled) {
           setPhase("cancelled");
+          setProgress(emptyProgress());
         } else if (event.payload.code === 0) {
           setPhase("completed");
+          setProgress((prev) => ({
+            ...prev,
+            percent: 100,
+            phase: "finishing",
+          }));
         } else {
           setPhase("failed");
+          setProgress(emptyProgress());
           setError(
             `Transfer failed${
               event.payload.code != null ? ` (exit ${event.payload.code})` : ""
@@ -268,6 +395,7 @@ function App() {
 
     return () => {
       unlistenLine?.();
+      unlistenProgress?.();
       unlistenExit?.();
     };
   }, []);
@@ -309,6 +437,34 @@ function App() {
       cancelled = true;
     };
   }, [phrase]);
+
+  const showProgress =
+    running &&
+    (progress.percent != null ||
+      progress.bytesDone != null ||
+      progress.speed != null ||
+      progress.phase != null);
+
+  const progressStatus = useMemo(() => {
+    if (progress.label) return progress.label;
+    if (progress.phase && progressPhaseLabel[progress.phase]) {
+      return progressPhaseLabel[progress.phase];
+    }
+    return phaseLabel[phase];
+  }, [progress.label, progress.phase, phase]);
+
+  const progressDetail = useMemo(() => {
+    const parts: string[] = [];
+    if (progress.bytesDone != null && progress.bytesTotal != null) {
+      parts.push(
+        `${formatBytes(progress.bytesDone)} / ${formatBytes(progress.bytesTotal)}`,
+      );
+    } else if (progress.bytesDone != null) {
+      parts.push(formatBytes(progress.bytesDone));
+    }
+    if (progress.speed) parts.push(progress.speed);
+    return parts.join(" · ");
+  }, [progress.bytesDone, progress.bytesTotal, progress.speed]);
 
   const canStart = useMemo(() => {
     if (running || binError) return false;
@@ -358,6 +514,7 @@ function App() {
     setError(null);
     setLog([]);
     setCopied(null);
+    setProgress(emptyProgress());
     setPhrase(
       mode === "send" && options.customCode.trim()
         ? options.customCode.trim()
@@ -387,7 +544,10 @@ function App() {
           options: {
             customCode: options.customCode.trim() || null,
             relay: options.relay.trim() || null,
+            pass: options.relayPass.trim() || null,
             port: portNum ?? null,
+            socks5: options.socks5.trim() || null,
+            connect: options.connect.trim() || null,
             overwrite: options.overwrite,
             yes: options.yes,
             zip: options.zip,
@@ -779,6 +939,29 @@ function App() {
                   spellCheck={false}
                 />
               </label>
+              <label className="field">
+                <span>Relay password</span>
+                <input
+                  type="password"
+                  value={options.relayPass}
+                  onChange={(e) =>
+                    setOptions((o) => ({ ...o, relayPass: e.target.value }))
+                  }
+                  placeholder="optional — for private relays"
+                  disabled={running}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={rememberRelayPass}
+                  onChange={(e) => setRememberRelayPass(e.target.checked)}
+                  disabled={running}
+                />
+                Remember relay password with relay host
+              </label>
               {mode === "send" && (
                 <label className="field">
                   <span>Base port</span>
@@ -877,6 +1060,59 @@ function App() {
                   Choose a download folder to enable zip-after-receive.
                 </p>
               )}
+
+              <button
+                type="button"
+                className="options-toggle advanced-toggle"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                aria-expanded={advancedOpen}
+              >
+                <span>Advanced network</span>
+                <span className="chevron" aria-hidden>
+                  {advancedOpen ? "▾" : "▸"}
+                </span>
+              </button>
+              {advancedOpen && (
+                <div className="advanced-options">
+                  <label className="field">
+                    <span>SOCKS5 proxy</span>
+                    <input
+                      value={options.socks5}
+                      onChange={(e) =>
+                        setOptions((o) => ({ ...o, socks5: e.target.value }))
+                      }
+                      placeholder="optional — e.g. socks5://127.0.0.1:9050"
+                      disabled={running}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>HTTP proxy</span>
+                    <input
+                      value={options.connect}
+                      onChange={(e) =>
+                        setOptions((o) => ({ ...o, connect: e.target.value }))
+                      }
+                      placeholder="optional — e.g. http://127.0.0.1:8080"
+                      disabled={running}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={rememberProxies}
+                      onChange={(e) => setRememberProxies(e.target.checked)}
+                      disabled={running}
+                    />
+                    Remember proxy settings
+                  </label>
+                  <p className="check-hint">
+                    Maps to croc <code>--socks5</code> and <code>--connect</code>.
+                    Leave blank to omit.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -955,9 +1191,38 @@ function App() {
           )}
           <span className={`status status-${phase}`} aria-live="polite">
             {running && <span className="pulse" aria-hidden />}
-            {phaseLabel[phase]}
+            {running && showProgress ? progressStatus : phaseLabel[phase]}
           </span>
         </section>
+
+        {showProgress && (
+          <section className="panel progress-panel" aria-live="polite">
+            <div className="panel-head">
+              <h2>Transfer progress</h2>
+              {progress.percent != null && (
+                <span className="count">{progress.percent}%</span>
+              )}
+            </div>
+            <div
+              className="progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress.percent ?? undefined}
+              aria-label={progressStatus}
+            >
+              <div
+                className="progress-fill"
+                style={{
+                  width: `${Math.min(100, Math.max(0, progress.percent ?? 0))}%`,
+                }}
+              />
+            </div>
+            {progressDetail && (
+              <p className="progress-detail">{progressDetail}</p>
+            )}
+          </section>
+        )}
 
         <section className="panel log" aria-labelledby="log-heading">
           <div className="panel-head">

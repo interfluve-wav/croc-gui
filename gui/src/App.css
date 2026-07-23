@@ -441,6 +441,46 @@ input:focus-visible {
   animation: fade-in 160ms ease;
 }
 
+.advanced-toggle {
+  margin-top: 0.65rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.advanced-options {
+  margin-top: 0.55rem;
+  padding-top: 0.15rem;
+}
+
+.progress-panel {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+}
+
+.progress-track {
+  height: 0.55rem;
+  background: color-mix(in srgb, var(--bg-accent) 80%, white);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 85%, white),
+    var(--accent)
+  );
+  transition: width 180ms ease;
+}
+
+.progress-detail {
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
 .checks {
   display: flex;
   flex-direction: column;

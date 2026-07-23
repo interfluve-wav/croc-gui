@@ -10,10 +10,10 @@ Research on upstream CLI coverage, proxies, and relays: [`FEATURE_GAP_AND_NETWOR
 
 Near-term work that builds on what already shipped (Send/Receive, QR, drag-drop, local-only, zip, prefs, About, CI).
 
-1. **Transfer progress that reads like a product** — Parse croc stdout for percent, speed, and ETA where possible; clearer phase labels (connecting → transferring → finishing).
+1. ~~**Transfer progress that reads like a product**~~ — **Done (Pass A):** parse croc output for percent, bytes, speed; progress bar + phase status; raw log retained.
 2. **Local transfer history** — Recent codes, paths, and outcomes (local-only; no cloud). Quick “reuse last receive folder / last relay.”
 3. **Screenshot & release polish** — Capture Send/Receive shots for the README; tag GitHub Releases from CI artifacts; notarization / signing notes for macOS and Windows.
-4. **Relay profiles** — Named presets (default public relay, home LAN, self-hosted) instead of retyping host/port each time. Include relay password (`--pass`) and optional proxy fields per [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md).
+4. **Relay profiles** — Named presets (default public relay, home LAN, self-hosted) instead of retyping host/port each time. Build on existing relay + pass + proxy fields from Pass A.
 5. **QR that encodes `croc <phrase>`** — Full command in the code so phone scanners and docs stay consistent.
 
 ## Later
@@ -45,7 +45,7 @@ Larger bets once the core loop feels finished.
 ### Power user
 
 - Saved option profiles (zip + local + relay bundles)
-- SOCKS5 / HTTP proxy fields (`--socks5`, `--connect`) and known peer `--ip` — see [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md)
+- SOCKS5 / HTTP proxy fields (`--socks5`, `--connect`) and known peer `--ip` — proxy fields shipped in Pass A; `--ip` still open — see [`FEATURE_GAP_AND_NETWORK.md`](FEATURE_GAP_AND_NETWORK.md)
 - Bandwidth throttle (`--throttleUpload`)
 - Send short text / clipboard payloads via croc’s `--text`
 - Folder-send polish: `--git`, `--exclude` / `--exclude-file`
