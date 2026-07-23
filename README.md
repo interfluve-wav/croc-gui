@@ -25,10 +25,24 @@
 </p>
 
 <p align="center">
+  <a href="docs/UPSTREAM_ATTRIBUTION.md"><img src="https://img.shields.io/badge/project-unofficial%20community%20GUI-F59E0B?style=flat-square" alt="Unofficial community GUI" /></a>
   <a href="https://github.com/sponsors/schollz"><img src="https://img.shields.io/badge/sponsor-schollz%20%2F%20croc-ea4aaa?style=flat-square&logo=githubsponsors&logoColor=white" alt="Sponsor schollz" /></a>
   <a href="https://github.com/schollz/croc"><img src="https://img.shields.io/badge/powered%20by-schollz%2Fcroc-111827?style=flat-square" alt="Powered by schollz/croc" /></a>
   <a href="https://github.com/interfluve-wav/croc-gui"><img src="https://img.shields.io/badge/GUI%20by-interfluve--wav-0B6E4F?style=flat-square" alt="GUI by interfluve-wav" /></a>
 </p>
+
+---
+
+## Unofficial community project
+
+> **Croc GUI is an unofficial, community-built desktop wrapper** around [schollz/croc](https://github.com/schollz/croc). It is **not** affiliated with, maintained by, or endorsed by Zack Scholl (schollz) or the upstream croc project unless they say so explicitly.
+
+| | |
+|---|---|
+| **Transfer engine** | [schollz/croc](https://github.com/schollz/croc) by Zack Scholl — [Sponsor schollz](https://github.com/sponsors/schollz) |
+| **This desktop app** | Built by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) |
+
+Attribution details, upstream etiquette, and how to notify schollz respectfully: [`docs/UPSTREAM_ATTRIBUTION.md`](docs/UPSTREAM_ATTRIBUTION.md).
 
 ---
 
@@ -55,7 +69,7 @@ Drag and drop files, share a **QR code** or code phrase, or run **local-only LAN
 | **croc** (transfer engine) | [Zack Scholl / schollz](https://github.com/schollz) — [schollz/croc](https://github.com/schollz/croc) — [Sponsor schollz](https://github.com/sponsors/schollz) |
 | **Croc GUI** (this desktop app) | Built by **Suhaas** / [**interfluve-wav**](https://github.com/interfluve-wav) — [interfluve-wav/croc-gui](https://github.com/interfluve-wav/croc-gui) · [suhaaschitturi.com](https://suhaaschitturi.com) |
 
-This repository is a GUI wrapper around upstream croc, not a claim of authorship over the protocol or CLI.
+This repository is an **unofficial** GUI wrapper around upstream croc — not a claim of authorship over the protocol or CLI, and not an official schollz product.
 
 ---
 
@@ -178,6 +192,7 @@ croc-gui/
 | croc protocol / CLI behavior | [schollz/croc issues](https://github.com/schollz/croc/issues) |
 | Sponsor upstream | [github.com/sponsors/schollz](https://github.com/sponsors/schollz) |
 | GUI maintainer | [interfluve-wav](https://github.com/interfluve-wav) · [Suhaas](https://suhaaschitturi.com) |
+| Attribution & upstream etiquette | [`docs/UPSTREAM_ATTRIBUTION.md`](docs/UPSTREAM_ATTRIBUTION.md) |
 
 More detail: [`SUPPORT.md`](SUPPORT.md).
 
