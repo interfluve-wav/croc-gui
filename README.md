@@ -35,20 +35,20 @@
 
 ## Screenshots
 
+| Send | Receive |
+|:---:|:---:|
+| ![Send tab](docs/images/screenshots/send.png) | ![Receive tab](docs/images/screenshots/receive.png) |
+
+| Options | About |
+|:---:|:---:|
+| ![Options expanded](docs/images/screenshots/options.png) | ![About dialog](docs/images/screenshots/about.png) |
+
 <p align="center">
-  <img src="docs/images/screenshots/send-main.png" alt="Croc GUI — Send tab with drag-and-drop file picker" width="720" />
+  <img src="docs/images/screenshots/progress.png" alt="Croc GUI — send in progress with code phrase and QR" width="720" />
 </p>
 
 <p align="center">
-  <em>Send mode — drag-and-drop files or folders, then share the code phrase or QR.</em>
-</p>
-
-<p align="center">
-  <img src="docs/images/screenshots/options-expanded.png" alt="Croc GUI — Options panel with relay, local-only, and zip settings" width="720" />
-</p>
-
-<p align="center">
-  <em>Options — custom code, relay, local-only LAN mode, zip, and advanced network settings.</em>
+  <em>Send mode — share the code phrase or QR; Receive mode — paste a code and pick a download folder.</em>
 </p>
 
 <details>
@@ -58,7 +58,7 @@
 
 </details>
 
-> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For Twitter/Reddit posts, attach `docs/images/screenshots/send-main.png` or the brand assets in [`docs/images/`](docs/images/) (`banner-square.png`, `banner-community.png`) — see [`docs/promo/`](docs/promo/) for paste-ready copy.
+> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For Twitter/Reddit posts, attach `docs/images/screenshots/send.png` or `progress.png`, or brand assets in [`docs/images/`](docs/images/) — see [`docs/promo/`](docs/promo/) and [`docs/images/screenshots/`](docs/images/screenshots/) for capture notes.
 
 ---
 

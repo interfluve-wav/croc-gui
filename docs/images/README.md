@@ -15,19 +15,17 @@ Marketing images for the repo README, social posts, and GitHub branding.
 
 ## App screenshots
 
-Captured macOS window shots live in [`screenshots/`](screenshots/):
+Window captures live in [`screenshots/`](screenshots/):
 
 | File | Content |
 |------|---------|
-| `screenshots/send-main.png` | Send tab — drag-and-drop zone, Start button, status log (primary README / social image) |
-| `screenshots/send-overview.png` | Send tab — wider crop of the same view |
-| `screenshots/options-expanded.png` | Options panel expanded — relay, local-only, zip, port, auto-confirm |
+| `screenshots/send.png` | Send tab — drag-and-drop, ready to start |
+| `screenshots/receive.png` | Receive tab — code phrase + download folder |
+| `screenshots/options.png` | Options expanded — relay, local-only, zip, port |
+| `screenshots/about.png` | About dialog — version + attribution |
+| `screenshots/progress.png` | Send in progress — demo code, QR, status |
 
-### Still to capture
-
-| File | Suggested content |
-|------|-------------------|
-| `screenshots/receive-main.png` | Receive mode with code field / QR |
+Re-capture instructions: [`screenshots/README.md`](screenshots/README.md).
 
 ## Capture tips
 
