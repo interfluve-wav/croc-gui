@@ -13,13 +13,21 @@ Marketing images for the repo README, social posts, and GitHub branding.
 | `banner-square.png` | Twitter, Reddit, square social cards |
 | `architecture.svg` | High-level GUI → Tauri → croc diagram |
 
-## App screenshots (to capture)
+## App screenshots
+
+Captured macOS window shots live in [`screenshots/`](screenshots/):
+
+| File | Content |
+|------|---------|
+| `screenshots/send-main.png` | Send tab — drag-and-drop zone, Start button, status log (primary README / social image) |
+| `screenshots/send-overview.png` | Send tab — wider crop of the same view |
+| `screenshots/options-expanded.png` | Options panel expanded — relay, local-only, zip, port, auto-confirm |
+
+### Still to capture
 
 | File | Suggested content |
 |------|-------------------|
-| `send.png` | Send mode with files selected and code phrase visible |
-| `receive.png` | Receive mode with code field / QR |
-| `options.png` | Options panel (relay, local-only, zip, etc.) |
+| `screenshots/receive-main.png` | Receive mode with code field / QR |
 
 ## Capture tips
 

@@ -7,6 +7,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 import { applyProxyFieldNormalization } from "./proxyPaste";
+import {
+  buildCliReceiveCommand,
+  buildReceiveUrl,
+} from "./shareLink";
 import "./App.css";
 
 type Mode = "send" | "receive";
@@ -69,9 +73,9 @@ type ProgressState = {
   label: string | null;
 };
 
-type CopiedKind = "phrase" | "command" | null;
+type CopiedKind = "link" | "phrase" | "command" | null;
 
-const GUI_VERSION = "0.1.1";
+const GUI_VERSION = "0.1.2";
 const PREFS_KEY = "croc-gui-prefs-v2";
 const PREFS_KEY_V1 = "croc-gui-prefs-v1";
 
@@ -439,14 +443,37 @@ function App() {
     };
   }, []);
 
+  const shareLinkOptions = useMemo(
+    () => ({
+      relay: options.relay,
+      relayPass: rememberRelayPass ? options.relayPass : "",
+    }),
+    [options.relay, options.relayPass, rememberRelayPass],
+  );
+
+  const receiveUrl = useMemo(
+    () => (phrase ? buildReceiveUrl(phrase, shareLinkOptions) : null),
+    [phrase, shareLinkOptions],
+  );
+
+  const cliReceiveCommand = useMemo(
+    () =>
+      phrase
+        ? buildCliReceiveCommand(phrase, {
+            ...shareLinkOptions,
+            local: options.local,
+          })
+        : null,
+    [phrase, shareLinkOptions, options.local],
+  );
+
   useEffect(() => {
     let cancelled = false;
-    if (!phrase) {
+    if (!receiveUrl) {
       setQrDataUrl(null);
       return;
     }
-    const crocCommand = `croc ${phrase}`;
-    QRCode.toDataURL(crocCommand, {
+    QRCode.toDataURL(receiveUrl, {
       width: 168,
       margin: 1,
       errorCorrectionLevel: "M",
@@ -461,7 +488,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [phrase]);
+  }, [receiveUrl]);
 
   const showProgress =
     running &&
@@ -1208,34 +1235,64 @@ function App() {
           <section className="panel phrase" aria-live="polite">
             <div className="panel-head">
               <h2>Code phrase</h2>
-              <span className="hint">Share this with the receiver</span>
+              <span className="hint">
+                Share the link or code — phone scans open getcroc.com
+              </span>
             </div>
             <div className="phrase-layout">
               <div className="phrase-main">
                 <div className="phrase-row">
                   <code>{phrase}</code>
                 </div>
+                {receiveUrl && (
+                  <p className="receive-link">
+                    <a
+                      href={receiveUrl}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void openUrl(receiveUrl);
+                      }}
+                    >
+                      {receiveUrl}
+                    </a>
+                  </p>
+                )}
                 <div className="row phrase-actions">
+                  <button
+                    type="button"
+                    className={`primary-copy${copied === "link" ? " copied" : ""}`}
+                    onClick={() =>
+                      receiveUrl && void copyText("link", receiveUrl)
+                    }
+                  >
+                    {copied === "link" ? "Copied link" : "Copy receive link"}
+                  </button>
                   <button
                     type="button"
                     className={copied === "phrase" ? "copied" : ""}
                     onClick={() => void copyText("phrase", phrase)}
                   >
-                    {copied === "phrase" ? "Copied" : "Copy phrase"}
+                    {copied === "phrase" ? "Copied code" : "Copy code only"}
                   </button>
                   <button
                     type="button"
                     className={copied === "command" ? "copied" : ""}
-                    onClick={() => void copyText("command", `croc ${phrase}`)}
+                    onClick={() =>
+                      cliReceiveCommand &&
+                      void copyText("command", cliReceiveCommand)
+                    }
                   >
-                    {copied === "command" ? "Copied" : "Copy croc command"}
+                    {copied === "command" ? "Copied command" : "Copy CLI command"}
                   </button>
                 </div>
               </div>
               {qrDataUrl && (
                 <figure className="qr">
-                  <img src={qrDataUrl} alt={`QR code for croc ${phrase}`} />
-                  <figcaption>Scan for full croc command</figcaption>
+                  <img
+                    src={qrDataUrl}
+                    alt={`QR code to receive at getcroc.com with code ${phrase}`}
+                  />
+                  <figcaption>Scan to open getcroc.com</figcaption>
                 </figure>
               )}
             </div>

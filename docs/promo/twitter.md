@@ -6,7 +6,7 @@ Paste-ready copy for launch posts. **Attach an image** — Twitter/X heavily fav
 
 ## Main tweet (paste-ready)
 
-**Attach:** `docs/images/banner-square.png` (best for timeline crop) or `docs/images/banner-community.png` (feature bullets)
+**Attach:** `docs/images/screenshots/send-main.png` (real app window — best for launch) or `docs/images/banner-square.png` (1:1 brand card) or `docs/images/banner-community.png` (feature bullets)
 
 ```
 Croc GUI — secure cross-platform file transfer without the terminal.
@@ -167,7 +167,7 @@ Roadmap: relay profiles, history, packaging (Homebrew/winget) → see docs/ROADM
 |--------|-----|
 | **Pin** the main tweet to your profile for 1–2 weeks | New visitors see the launch |
 | **Reply** (don't @-spam) to relevant croc threads if someone asks for a GUI | Community discovery, respectful |
-| **Quote-tweet** your own thread after a few days with a screenshot/GIF | Second chance in timeline |
+| **Quote-tweet** your own thread after a few days with `docs/images/screenshots/send-main.png` | Second chance in timeline |
 | **Post Tue–Thu, 9am–12pm** in your primary audience timezone | Rough peak for dev tools |
 
 ---
@@ -176,7 +176,9 @@ Roadmap: relay profiles, history, packaging (Homebrew/winget) → see docs/ROADM
 
 | Asset | When to use |
 |-------|-------------|
-| `banner-square.png` | **Default** — best Twitter/X timeline crop (1:1) |
+| `screenshots/send-main.png` | **Best for launch** — real Send tab window capture |
+| `screenshots/options-expanded.png` | Follow-up tweet showing relay / local-only / zip options |
+| `banner-square.png` | **Default brand card** — best Twitter/X timeline crop (1:1) |
 | `banner-community.png` | Feature-focused post; release announcements |
 | `banner-hero.png` | Wide card; pair with link preview from GitHub README |
 | `banner-minimal.png` | Follow-up tweet if you want a lighter visual |

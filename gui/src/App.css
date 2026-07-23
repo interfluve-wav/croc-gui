@@ -539,6 +539,33 @@ input:focus-visible {
 
 .phrase-actions {
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.phrase-actions .primary-copy {
+  background: var(--accent);
+  color: var(--panel);
+  border-color: color-mix(in srgb, var(--accent) 80%, #000);
+}
+
+.phrase-actions .primary-copy:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, #000);
+}
+
+.receive-link {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.receive-link a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.receive-link a:hover {
+  text-decoration: underline;
 }
 
 .qr {
