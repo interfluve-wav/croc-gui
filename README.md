@@ -33,24 +33,6 @@
 
 ---
 
-## Screenshots
-
-| Send | Receive |
-|:---:|:---:|
-| ![Send tab](docs/images/screenshots/send.png) | ![Receive tab](docs/images/screenshots/receive.png) |
-
-| Options | About |
-|:---:|:---:|
-| ![Options expanded](docs/images/screenshots/options.png) | ![About dialog](docs/images/screenshots/about.png) |
-
-<p align="center">
-  <img src="docs/images/screenshots/progress.png" alt="Croc GUI — send in progress with code phrase and QR" width="720" />
-</p>
-
-<p align="center">
-  <em>Send mode — share the code phrase or QR; Receive mode — paste a code and pick a download folder.</em>
-</p>
-
 <details>
 <summary>Architecture diagram</summary>
 
@@ -58,7 +40,7 @@
 
 </details>
 
-> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For Twitter/Reddit posts, attach `docs/images/screenshots/send.png` or `progress.png`, or brand assets in [`docs/images/`](docs/images/) — see [`docs/promo/`](docs/promo/) and [`docs/images/screenshots/`](docs/images/screenshots/) for capture notes.
+> **Social preview:** GitHub does not read custom `og:image` tags from READMEs, but the hero banner at the top of this file is the image most link previews and embeds pick up when the repo URL is shared. For social posts, use brand assets in [`docs/images/`](docs/images/) — see [`docs/promo/`](docs/promo/).
 
 ---
 
