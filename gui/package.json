@@ -1,5 +1,6 @@
 {
   "name": "croc-gui",
+  "description": "Desktop GUI for croc — secure cross-platform encrypted file transfer on macOS, Windows, and Linux. Drag-and-drop, QR codes, LAN mode. No cloud upload.",
   "private": true,
   "version": "0.1.0",
   "type": "module",

@@ -8,12 +8,12 @@
   <img src="docs/images/logo.png" alt="Croc GUI logo" width="96" height="96" />
 </p>
 
-<h1 align="center">Croc GUI</h1>
+<h1 align="center">Croc GUI — Secure Cross-Platform File Transfer</h1>
 
 <p align="center">
-  A desktop front end for securely sending and receiving files with
-  <a href="https://github.com/schollz/croc">croc</a>.
-  Built for people who want the reliability of the CLI without living in the terminal.
+  <strong>Desktop GUI for <a href="https://github.com/schollz/croc">croc</a></strong> — encrypted, peer-to-peer file transfer on
+  <strong>macOS, Windows, and Linux</strong> with drag-and-drop, QR codes, and LAN mode.
+  No cloud upload. No terminal required.
 </p>
 
 <p align="center">
@@ -34,9 +34,19 @@
 
 ## What this is
 
-**Croc GUI** is a cross-platform desktop app (Tauri 2 + React) that shells out to a **bundled** [croc](https://github.com/schollz/croc) binary. It does not reimplement the transfer protocol. Send, receive, relays, crypto, and codes remain upstream croc.
+**Croc GUI** is a free, open-source **desktop app** for [croc](https://github.com/schollz/croc) — the popular tool for **secure, encrypted, peer-to-peer file transfer** without uploading to the cloud. Built with Tauri 2 + React, it bundles the croc binary and gives you a clear **Send / Receive** interface on **macOS, Windows, and Linux**.
 
-**Who it’s for:** anyone who already uses (or wants) croc for ad-hoc, end-to-end encrypted transfers and prefers a clear Send / Receive UI—code phrases, QR, drag-and-drop, and sensible options—on macOS, Windows, or Linux.
+Drag and drop files, share a **QR code** or code phrase, or run **local-only LAN** transfers — all with end-to-end encryption handled by upstream croc. No PATH setup, no memorizing CLI flags.
+
+**Who it’s for:** anyone who wants fast, ad-hoc file sharing between devices — developers, teams, friends, or family — without leaving files on someone else’s server.
+
+<p align="center">
+  <a href="https://github.com/interfluve-wav/croc-gui/releases"><strong>⬇ Download for your OS</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#quick-start"><strong>Try it</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/interfluve-wav/croc-gui"><strong>Star on GitHub</strong></a>
+</p>
 
 ### Credits
 

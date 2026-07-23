@@ -26,6 +26,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "shortDescription": "Secure encrypted file transfer with croc",
+    "longDescription": "Desktop GUI for croc — cross-platform encrypted peer-to-peer file transfer with drag-and-drop, QR codes, and LAN mode. No cloud upload required.",
     "resources": ["bin/"],
     "icon": [
       "icons/32x32.png",
