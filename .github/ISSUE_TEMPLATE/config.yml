@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Upstream croc (protocol / CLI)
+    url: https://github.com/schollz/croc/issues
+    about: Transfer engine bugs and CLI feature requests belong in schollz/croc.
+  - name: Sponsor schollz
+    url: https://github.com/sponsors/schollz
+    about: Support the author of croc.
+  - name: Croc GUI maintainer
+    url: https://github.com/interfluve-wav
+    about: Suhaas / interfluve-wav — GUI author and maintainer.

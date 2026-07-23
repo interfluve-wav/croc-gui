@@ -1,0 +1,65 @@
+name: Bug report
+description: Something wrong in Croc GUI (UI, packaging, wrapper behavior)
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for **Croc GUI** issues. Protocol/CLI bugs in croc itself → [schollz/croc](https://github.com/schollz/croc/issues).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Expected vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - Send
+        - Receive
+        - Both / other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: e.g. macOS 15 arm64, Windows 11 x64, Ubuntu 22.04 x64
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: GUI version & bundled croc (About dialog)
+      placeholder: e.g. GUI 0.1.0 · croc v10.x.x
+    validations:
+      required: false
+  - type: checkboxes
+    id: options
+    attributes:
+      label: Options in use
+      options:
+        - label: Local-only (--local)
+        - label: Custom relay / port
+        - label: Zip on send or zip after receive
+        - label: Custom code phrase
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Paste transfer log snippets (redact personal paths if needed).
+    validations:
+      required: false

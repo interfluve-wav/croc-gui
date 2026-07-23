@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="320" viewBox="0 0 880 320" role="img" aria-labelledby="title desc">
+  <title id="title">Croc GUI architecture</title>
+  <desc id="desc">Desktop GUI wraps the bundled croc CLI for send and receive transfers.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#121a2b"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#7dd3c7"/>
+    </marker>
+  </defs>
+  <rect width="880" height="320" rx="16" fill="url(#bg)"/>
+  <text x="40" y="48" fill="#e8eef7" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="22" font-weight="600">Croc GUI</text>
+  <text x="40" y="74" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Tauri 2 + React desktop wrapper</text>
+
+  <rect x="40" y="110" width="220" height="140" rx="12" fill="#182338" stroke="#2c3c58"/>
+  <text x="60" y="148" fill="#e8eef7" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="16" font-weight="600">UI</text>
+  <text x="60" y="176" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Send / Receive</text>
+  <text x="60" y="198" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Options · QR · DnD</text>
+  <text x="60" y="220" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Prefs · About</text>
+
+  <line x1="270" y1="180" x2="330" y2="180" stroke="#7dd3c7" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="340" y="110" width="220" height="140" rx="12" fill="#182338" stroke="#2c3c58"/>
+  <text x="360" y="148" fill="#e8eef7" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="16" font-weight="600">Tauri shell</text>
+  <text x="360" y="176" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Spawn bundled binary</text>
+  <text x="360" y="198" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Stream stdout / stderr</text>
+  <text x="360" y="220" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Zip-after-receive helper</text>
+
+  <line x1="570" y1="180" x2="630" y2="180" stroke="#7dd3c7" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="640" y="110" width="200" height="140" rx="12" fill="#1a2a28" stroke="#3d6b63"/>
+  <text x="660" y="148" fill="#e8eef7" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="16" font-weight="600">croc CLI</text>
+  <text x="660" y="176" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">schollz/croc</text>
+  <text x="660" y="198" fill="#9aa8bd" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="13">Protocol · relay · crypto</text>
+  <text x="660" y="220" fill="#f0b45a" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="12">Upstream (not a fork claim)</text>
+
+  <text x="40" y="290" fill="#6f7f96" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="12">Transfer logic remains upstream croc. This repo ships a GUI that invokes a bundled binary.</text>
+</svg>

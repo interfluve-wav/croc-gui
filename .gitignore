@@ -1,0 +1,40 @@
+# OS / editor
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Cursor / local agent
+.cursor/
+
+# Node / frontend (gui/)
+gui/node_modules/
+gui/dist/
+gui/dist-ssr/
+gui/release/
+gui/*.local
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Bundled croc binary (staged at build time)
+gui/src-tauri/bin/croc
+gui/src-tauri/bin/croc.exe
+!gui/src-tauri/bin/.gitkeep
+
+# Rust / Tauri
+gui/src-tauri/target/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
