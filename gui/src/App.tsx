@@ -71,7 +71,7 @@ type ProgressState = {
 
 type CopiedKind = "phrase" | "command" | null;
 
-const GUI_VERSION = "0.1.0";
+const GUI_VERSION = "0.1.1";
 const PREFS_KEY = "croc-gui-prefs-v2";
 const PREFS_KEY_V1 = "croc-gui-prefs-v1";
 
@@ -445,7 +445,8 @@ function App() {
       setQrDataUrl(null);
       return;
     }
-    QRCode.toDataURL(phrase, {
+    const crocCommand = `croc ${phrase}`;
+    QRCode.toDataURL(crocCommand, {
       width: 168,
       margin: 1,
       errorCorrectionLevel: "M",
@@ -691,7 +692,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <div>
+        <div className="header-brand">
           <h1>Croc</h1>
           <p className="tagline">Send and receive files with a short code</p>
         </div>
@@ -1233,8 +1234,8 @@ function App() {
               </div>
               {qrDataUrl && (
                 <figure className="qr">
-                  <img src={qrDataUrl} alt={`QR code for ${phrase}`} />
-                  <figcaption>Scan on phone</figcaption>
+                  <img src={qrDataUrl} alt={`QR code for croc ${phrase}`} />
+                  <figcaption>Scan for full croc command</figcaption>
                 </figure>
               )}
             </div>
@@ -1372,7 +1373,24 @@ function App() {
           </button>
         </p>
         <p className="credit credit-gui">
-          GUI by Suhaas · interfluve-wav
+          GUI by{" "}
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => void openUrl("https://github.com/interfluve-wav")}
+          >
+            Suhaas (interfluve-wav)
+          </button>
+          {" · "}
+          <button
+            type="button"
+            className="linkish"
+            onClick={() =>
+              void openUrl("https://github.com/interfluve-wav/croc-gui")
+            }
+          >
+            croc-gui
+          </button>
         </p>
       </footer>
 
@@ -1405,6 +1423,21 @@ function App() {
                 <dd>{GUI_VERSION}</dd>
               </div>
               <div>
+                <dt>GUI author</dt>
+                <dd>
+                  Suhaas /{" "}
+                  <button
+                    type="button"
+                    className="linkish"
+                    onClick={() =>
+                      void openUrl("https://github.com/interfluve-wav")
+                    }
+                  >
+                    interfluve-wav
+                  </button>
+                </dd>
+              </div>
+              <div>
                 <dt>Bundled croc</dt>
                 <dd>{crocVersion ?? "Unknown"}</dd>
               </div>
@@ -1415,9 +1448,18 @@ function App() {
             </dl>
             <p className="about-blurb">
               Desktop wrapper around upstream croc — transfer protocol and CLI
-              by Zack Scholl (schollz), not a reimplementation.
+              by Zack Scholl (schollz), not a reimplementation. This GUI is built
+              and maintained by Suhaas (interfluve-wav).
             </p>
             <div className="row">
+              <button
+                type="button"
+                onClick={() =>
+                  void openUrl("https://github.com/interfluve-wav/croc-gui")
+                }
+              >
+                croc-gui repo
+              </button>
               <button
                 type="button"
                 onClick={() => void openUrl("https://github.com/schollz/croc")}

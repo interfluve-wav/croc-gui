@@ -58,6 +58,10 @@ body {
   gap: 1rem;
 }
 
+.header-brand {
+  min-width: 0;
+}
+
 .header-actions {
   display: flex;
   flex-direction: column;
@@ -752,8 +756,7 @@ input:focus-visible {
 }
 
 .credit-gui {
-  font-size: 0.7rem;
-  opacity: 0.65;
+  font-size: 0.75rem;
 }
 
 .credit a {
