@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to build and upload (e.g. v0.1.2)"
+        description: "Release tag to build and upload (e.g. v0.1.3)"
         required: true
         type: string
 
@@ -29,21 +29,25 @@ jobs:
             croc_asset: macOS-ARM64.tar.gz
             tauri_args: --target aarch64-apple-darwin
             rust_target: aarch64-apple-darwin
+            release_asset_name_pattern: "Croc_[version] (Apple Silicon)[ext]"
           - name: macOS x86_64
             os: macos-14
             croc_asset: macOS-64bit.tar.gz
             tauri_args: --target x86_64-apple-darwin
             rust_target: x86_64-apple-darwin
+            release_asset_name_pattern: "[name]_[version]_[arch][ext]"
           - name: Windows x64
             os: windows-latest
             croc_asset: Windows-64bit.zip
             tauri_args: ""
             rust_target: ""
+            release_asset_name_pattern: "[name]_[version]_[arch][ext]"
           - name: Linux x64
             os: ubuntu-22.04
             croc_asset: Linux-64bit.tar.gz
             tauri_args: ""
             rust_target: ""
+            release_asset_name_pattern: "[name]_[version]_[arch][ext]"
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -147,13 +151,16 @@ jobs:
 
             ## Downloads
 
-            | Platform | Files |
-            |----------|--------|
-            | macOS | `.dmg` (Apple Silicon and/or Intel) |
-            | Windows | `.msi` and/or NSIS `.exe` |
-            | Linux | `.deb` and/or `.AppImage` |
+            Pick **one** installer for your OS:
 
-            Pick the installer for your OS from the assets below.
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon) | `Croc_x.x.x (Apple Silicon).dmg` |
+            | macOS (Intel) | `Croc_x.x.x_x64.dmg` |
+            | Windows | `Croc_x.x.x_x64-setup.exe` |
+            | Linux (Debian/Ubuntu) | `Croc_x.x.x_amd64.deb` |
+            | Linux (other) | `Croc_x.x.x_amd64.AppImage` |
 
             **Unofficial community project** — GUI by [interfluve-wav](https://github.com/interfluve-wav). Powered by [schollz/croc](https://github.com/schollz/croc). [Sponsor schollz](https://github.com/sponsors/schollz).
+          releaseAssetNamePattern: ${{ matrix.release_asset_name_pattern }}
           args: ${{ matrix.tauri_args }}
