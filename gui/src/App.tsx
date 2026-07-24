@@ -8,6 +8,13 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 import { applyProxyFieldNormalization } from "./proxyPaste";
+import { SharePhraseBlock } from "./components/SharePhraseBlock";
+import { TransferFileList } from "./components/TransferFileList";
+import { TransferProgressBlock } from "./components/TransferProgressBlock";
+import {
+  getActiveFileBasename,
+  getTransferUiPhase,
+} from "./progressDisplay";
 import {
   buildCliReceiveCommand,
   buildReceiveUrl,
@@ -81,7 +88,7 @@ type ProgressState = {
 
 type CopiedKind = "link" | "phrase" | "command" | null;
 
-const GUI_VERSION = "0.1.5";
+const GUI_VERSION = "0.1.6";
 const PREFS_KEY = "croc-gui-prefs-v2";
 const PREFS_KEY_V1 = "croc-gui-prefs-v1";
 
@@ -107,17 +114,6 @@ const emptyProgress = (): ProgressState => ({
   phase: null,
   label: null,
 });
-
-const progressPhaseLabel: Record<string, string> = {
-  connecting: "Connecting…",
-  preparing: "Preparing…",
-  checking: "Checking…",
-  sending: "Sending…",
-  receiving: "Receiving…",
-  transferring: "Transferring…",
-  finishing: "Finishing…",
-  waiting: "Waiting for receiver…",
-};
 
 /** After this long at ≥98% with no new output, show "Finishing…" */
 const PROGRESS_FINISHING_MS = 3_000;
@@ -230,6 +226,8 @@ function App() {
   const initialPrefs = useMemo(() => loadPrefs(), []);
   const [mode, setMode] = useState<Mode>("send");
   const [paths, setPaths] = useState<string[]>([]);
+  /** Snapshot of send paths when a transfer starts (stable UI during run). */
+  const [transferPaths, setTransferPaths] = useState<string[]>([]);
   const [codeInput, setCodeInput] = useState("");
   const [outDir, setOutDir] = useState(initialPrefs.outDir);
   const [options, setOptions] = useState<TransferOptions>(() => ({
@@ -261,7 +259,12 @@ function App() {
   const [codeDragOver, setCodeDragOver] = useState(false);
   const [progress, setProgress] = useState<ProgressState>(emptyProgress);
   const [progressTick, setProgressTick] = useState(0);
+  const [completedFiles, setCompletedFiles] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [logExpanded, setLogExpanded] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
+  const prevActiveFile = useRef<string | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const copiedTimer = useRef<number | null>(null);
   const lastProgressAt = useRef<number | null>(null);
@@ -320,7 +323,9 @@ function App() {
     if (cap === "send") setMode("send");
     if (cap === "progress") {
       setMode("send");
-      setPaths(["/demo/sample-document.pdf"]);
+      const demoPaths = ["/demo/sample-document.pdf"];
+      setPaths(demoPaths);
+      setTransferPaths(demoPaths);
       setPhrase("demo-lunar-cedar-piano");
       setPhase("running");
       setProgress({
@@ -589,7 +594,7 @@ function App() {
       return;
     }
     QRCode.toDataURL(receiveUrl, {
-      width: 168,
+      width: 360,
       margin: 1,
       errorCorrectionLevel: "M",
       color: { dark: "#1c1915", light: "#fffaf2" },
@@ -612,6 +617,23 @@ function App() {
       progress.speed != null ||
       progress.phase != null);
 
+  const progressPercent = useMemo(() => {
+    if (progress.percent != null) {
+      return Math.min(100, Math.max(0, progress.percent));
+    }
+    if (
+      progress.bytesDone != null &&
+      progress.bytesTotal != null &&
+      progress.bytesTotal > 0
+    ) {
+      return Math.min(
+        100,
+        Math.max(0, (progress.bytesDone / progress.bytesTotal) * 100),
+      );
+    }
+    return null;
+  }, [progress.percent, progress.bytesDone, progress.bytesTotal]);
+
   const progressStall = useMemo(() => {
     void progressTick;
     if (!running || lastProgressAt.current == null) return null;
@@ -625,39 +647,46 @@ function App() {
           progress.bytesDone >= progress.bytesTotal * 0.99));
     if (!nearComplete) return null;
     const age = Date.now() - lastProgressAt.current;
-    if (age >= PROGRESS_STALL_HINT_MS) return "hint";
-    if (age >= PROGRESS_FINISHING_MS) return "finishing";
+    if (age >= PROGRESS_STALL_HINT_MS) return "hint" as const;
+    if (age >= PROGRESS_FINISHING_MS) return "finishing" as const;
     return null;
   }, [running, progress, progressTick]);
 
-  const progressStatus = useMemo(() => {
-    if (progressStall === "hint") {
-      return mode === "send"
-        ? "Waiting for receiver…"
-        : "Verifying transfer…";
-    }
-    if (progressStall === "finishing" || progress.phase === "finishing") {
-      return "Finishing…";
-    }
-    if (progress.label) return progress.label;
-    if (progress.phase && progressPhaseLabel[progress.phase]) {
-      return progressPhaseLabel[progress.phase];
-    }
-    return phaseLabel[phase];
-  }, [progress.label, progress.phase, progressStall, phase, mode]);
+  const transferUiPhase = useMemo(
+    () => getTransferUiPhase(progress, showProgress, progressStall, running),
+    [progress, showProgress, progressStall, running],
+  );
 
-  const progressDetail = useMemo(() => {
-    const parts: string[] = [];
-    if (progress.bytesDone != null && progress.bytesTotal != null) {
-      parts.push(
-        `${formatBytes(progress.bytesDone)} / ${formatBytes(progress.bytesTotal)}`,
-      );
-    } else if (progress.bytesDone != null) {
-      parts.push(formatBytes(progress.bytesDone));
+  useEffect(() => {
+    if (!running) {
+      setCompletedFiles(new Set());
+      prevActiveFile.current = null;
+      return;
     }
-    if (progress.speed) parts.push(progress.speed);
-    return parts.join(" · ");
-  }, [progress.bytesDone, progress.bytesTotal, progress.speed]);
+    const active = getActiveFileBasename(progress.label);
+    if (
+      active &&
+      prevActiveFile.current &&
+      active !== prevActiveFile.current
+    ) {
+      setCompletedFiles((prev) => new Set([...prev, prevActiveFile.current!]));
+    }
+    if (active) {
+      prevActiveFile.current = active;
+    }
+  }, [running, progress.label]);
+
+  useEffect(() => {
+    if (phase === "completed") {
+      setCompletedFiles(new Set(transferPaths.map(basename)));
+    }
+  }, [phase, transferPaths]);
+
+  useEffect(() => {
+    if (error || phase === "failed") {
+      setLogExpanded(true);
+    }
+  }, [error, phase]);
 
   const canStart = useMemo(() => {
     if (running || binError) return false;
@@ -667,6 +696,13 @@ function App() {
     if (options.zipAfterReceive && !outDir.trim()) return false;
     return true;
   }, [running, binError, mode, paths, codeInput, options.zipAfterReceive, outDir]);
+
+  const startButtonTitle = useMemo(() => {
+    if (canStart) return "Start transfer (⌘/Ctrl+Enter)";
+    if (mode === "send") return "Add files to send";
+    if (!outDir.trim()) return "Choose a download folder";
+    return "Enter a code phrase";
+  }, [canStart, mode, outDir]);
 
   async function pickSendPaths() {
     const selected = await open({
@@ -726,8 +762,21 @@ function App() {
     setError(null);
     setLog([]);
     setCopied(null);
-    setProgress(emptyProgress());
+    setLogExpanded(false);
+    setCompletedFiles(new Set());
+    prevActiveFile.current = null;
+    setOptionsOpen(false);
+    setProgress(
+      mode === "send"
+        ? { ...emptyProgress(), phase: "waiting", label: "Preparing send…" }
+        : { ...emptyProgress(), phase: "connecting", label: "Connecting…" },
+    );
     lastProgressAt.current = Date.now();
+    if (mode === "send") {
+      setTransferPaths([...paths]);
+    } else {
+      setTransferPaths([]);
+    }
     setPhrase(
       mode === "send" && options.customCode.trim()
         ? options.customCode.trim()
@@ -744,6 +793,7 @@ function App() {
     ) {
       setError("Port must be a positive number");
       setPhase("idle");
+      setTransferPaths([]);
       return;
     }
 
@@ -755,6 +805,7 @@ function App() {
           "Enter a valid croc code phrase (letters, numbers, and hyphens only).",
         );
         setPhase("idle");
+        setTransferPaths([]);
         return;
       }
       await invoke("start_transfer", {
@@ -780,8 +831,16 @@ function App() {
       });
     } catch (err) {
       setPhase("idle");
+      setTransferPaths([]);
       setError(String(err));
     }
+  }
+
+  function clearTransferSelection() {
+    setPaths([]);
+    setTransferPaths([]);
+    setPhrase(null);
+    setCodeInput("");
   }
 
   async function endTransferSession(clearLog: boolean) {
@@ -800,19 +859,41 @@ function App() {
     setPhase("idle");
   }
 
+  async function resetAfterTransfer(opts?: { clearFiles?: boolean }) {
+    const clearFiles = opts?.clearFiles ?? true;
+    await endTransferSession(true);
+    setError(null);
+    setOptionsOpen(false);
+    setPhrase(null);
+    if (clearFiles) {
+      clearTransferSelection();
+    } else {
+      // Keep paths for "Send same files again"; drop the transfer snapshot.
+      setTransferPaths([]);
+      if (mode === "receive") {
+        setCodeInput("");
+      }
+    }
+  }
+
+  async function onStartAnotherTransfer() {
+    await resetAfterTransfer({ clearFiles: true });
+  }
+
+  /** Keep the same files selected; clear session so a fresh code is generated. */
+  async function onSendSameFilesAgain() {
+    await resetAfterTransfer({ clearFiles: false });
+  }
+
+  async function onClearLog() {
+    await resetAfterTransfer({ clearFiles: true });
+  }
+
   async function onCancel() {
     try {
       await invoke("cancel_transfer");
     } catch (err) {
       setError(String(err));
-    }
-  }
-
-  async function onClearLog() {
-    await endTransferSession(true);
-    setError(null);
-    if (mode === "send") {
-      setPhrase(null);
     }
   }
 
@@ -880,11 +961,15 @@ function App() {
     setError(null);
     setDragOver(false);
     setCodeDragOver(false);
+    setOptionsOpen(false);
     if (next === "send") {
-      setPhrase(null);
+      clearTransferSelection();
       setMode("send");
       return;
     }
+    setPaths([]);
+    setTransferPaths([]);
+    setPhrase(null);
     const picked = await promptReceiveFolder();
     if (!picked) return;
     setMode("receive");
@@ -949,12 +1034,19 @@ function App() {
           </button>
         </div>
       )}
-      {phase === "completed" && (
+      {phase === "completed" && mode === "receive" && (
         <div className="banner success" role="status">
           <span className="success-mark" aria-hidden>
             ✓
           </span>
-          Transfer completed successfully.
+          <span>Transfer completed successfully.</span>
+          <button
+            type="button"
+            className="banner-action"
+            onClick={() => void onStartAnotherTransfer()}
+          >
+            Start another transfer
+          </button>
         </div>
       )}
       {phase === "cancelled" && (
@@ -965,72 +1057,87 @@ function App() {
 
       <main className="main">
         {mode === "send" ? (
-          <section className="panel" aria-labelledby="send-heading">
-            <div className="panel-head">
-              <h2 id="send-heading">Files to send</h2>
-              {paths.length > 0 && (
-                <span className="count">{paths.length} selected</span>
-              )}
-            </div>
-
-            <div
-              ref={dropZoneRef}
-              className={`drop-zone${dragOver ? " drag-over" : ""}${
-                paths.length === 0 ? " drop-zone-empty" : ""
-              }${running ? " drop-zone-disabled" : ""}`}
-              aria-label="Drop files or folders to send"
-            >
-              {paths.length === 0 ? (
-                <div className="drop-empty">
-                  <p className="drop-title">Drop files here</p>
-                  <p className="drop-sub">
-                    Files or folders — or use the buttons below
-                  </p>
-                  <div className="row">
-                    <button
-                      type="button"
-                      onClick={pickSendPaths}
-                      disabled={running}
-                    >
-                      Add files
-                    </button>
-                    <button
-                      type="button"
-                      onClick={pickSendFolder}
-                      disabled={running}
-                    >
-                      Add folder
-                    </button>
-                  </div>
+          <section
+            className={`panel send-panel${
+              running ? " send-panel-active" : ""
+            }${
+              phase === "completed"
+                ? " send-panel-sent"
+                : !running && paths.length > 0
+                  ? " send-panel-ready"
+                  : ""
+            }`}
+            aria-labelledby="send-heading"
+          >
+            {running ? (
+              <div className="transfer-stage">
+                <div className="panel-head">
+                  <h2 id="send-heading">Sending</h2>
+                  <span className="count">{transferPaths.length} selected</span>
                 </div>
-              ) : (
-                <>
-                  <div className="row">
-                    <button
-                      type="button"
-                      onClick={pickSendPaths}
-                      disabled={running}
-                    >
-                      Add files
-                    </button>
-                    <button
-                      type="button"
-                      onClick={pickSendFolder}
-                      disabled={running}
-                    >
-                      Add folder
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => setPaths([])}
-                      disabled={running}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                  <ul className="path-list">
-                    {paths.map((p) => (
+
+                {phrase && transferUiPhase !== "preparing" && (
+                    <SharePhraseBlock
+                      phrase={phrase}
+                      receiveUrl={receiveUrl}
+                      qrDataUrl={qrDataUrl}
+                      cliReceiveCommand={cliReceiveCommand}
+                      variant={
+                        transferUiPhase === "waiting" ? "prominent" : "compact"
+                      }
+                      copied={copied}
+                      onCopy={(kind, text) => void copyText(kind, text)}
+                      onOpenUrl={(url) => void openUrl(url)}
+                    />
+                  )}
+
+                {transferUiPhase !== "waiting" && (
+                  <TransferProgressBlock
+                    progress={progress}
+                    mode="send"
+                    stall={progressStall}
+                    running={running}
+                    showProgress={showProgress}
+                    computedPercent={progressPercent}
+                    formatBytes={formatBytes}
+                    hero={
+                      transferUiPhase === "transferring" ||
+                      transferUiPhase === "finishing"
+                    }
+                    uiPhase={transferUiPhase}
+                  />
+                )}
+
+                <TransferFileList
+                  paths={transferPaths}
+                  progressLabel={progress.label}
+                  completedFiles={completedFiles}
+                  transferComplete={false}
+                  basename={basename}
+                />
+
+                <div className="panel-cta panel-cta-running">
+                  <button
+                    type="button"
+                    className="danger primary-cta"
+                    onClick={onCancel}
+                    title="Cancel transfer (Esc)"
+                  >
+                    Cancel transfer
+                  </button>
+                </div>
+              </div>
+            ) : phase === "completed" ? (
+              <div className="sent-stage">
+                <div className="panel-head">
+                  <h2 id="send-heading">Files sent</h2>
+                  <span className="count success-count">
+                    ✓ Transfer complete
+                  </span>
+                </div>
+                <ul className="sent-file-list" aria-live="polite">
+                  {(transferPaths.length > 0 ? transferPaths : paths).map(
+                    (p) => (
                       <li key={p}>
                         <span className="path-name" title={p}>
                           {basename(p)}
@@ -1038,28 +1145,137 @@ function App() {
                         <span className="path-full" title={p}>
                           {p}
                         </span>
+                      </li>
+                    ),
+                  )}
+                </ul>
+                <div className="panel-cta panel-cta-sent">
+                  <button
+                    type="button"
+                    className="primary primary-cta"
+                    onClick={() => void onStartAnotherTransfer()}
+                  >
+                    Start another transfer
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost primary-cta-secondary"
+                    onClick={() => void onSendSameFilesAgain()}
+                    disabled={
+                      (transferPaths.length > 0 ? transferPaths : paths)
+                        .length === 0
+                    }
+                  >
+                    Send same files again
+                  </button>
+                </div>
+                <p className="sent-hint">
+                  Start another for a clean slate, or send the same files with a
+                  fresh code.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="panel-head">
+                  <h2 id="send-heading">Files to send</h2>
+                  {paths.length > 0 && (
+                    <span className="count">{paths.length} selected</span>
+                  )}
+                </div>
+
+                <div
+                  ref={dropZoneRef}
+                  className={`drop-zone${dragOver ? " drag-over" : ""}${
+                    paths.length === 0 ? " drop-zone-empty" : ""
+                  }`}
+                  aria-label="Drop files or folders to send"
+                >
+                  {paths.length === 0 ? (
+                    <div className="drop-empty">
+                      <p className="drop-title">Drop files here</p>
+                      <p className="drop-sub">
+                        Files or folders — or use the buttons below
+                      </p>
+                      <div className="row">
+                        <button type="button" onClick={pickSendPaths}>
+                          Add files
+                        </button>
+                        <button type="button" onClick={pickSendFolder}>
+                          Add folder
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="row">
+                        <button type="button" onClick={pickSendPaths}>
+                          Add files
+                        </button>
+                        <button type="button" onClick={pickSendFolder}>
+                          Add folder
+                        </button>
                         <button
                           type="button"
-                          className="ghost path-remove"
-                          onClick={() => removePath(p)}
-                          disabled={running}
-                          aria-label={`Remove ${basename(p)}`}
+                          className="ghost"
+                          onClick={() => setPaths([])}
                         >
-                          Remove
+                          Clear
                         </button>
-                      </li>
-                    ))}
-                  </ul>
-                  {!running && (
-                    <p className="drop-more">Drop more files here</p>
+                      </div>
+                      <ul className="path-list">
+                        {paths.map((p) => (
+                          <li key={p}>
+                            <span className="path-name" title={p}>
+                              {basename(p)}
+                            </span>
+                            <span className="path-full" title={p}>
+                              {p}
+                            </span>
+                            <button
+                              type="button"
+                              className="ghost path-remove"
+                              onClick={() => removePath(p)}
+                              aria-label={`Remove ${basename(p)}`}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="drop-more">Drop more files here</p>
+                    </>
                   )}
-                </>
-              )}
-            </div>
+                </div>
+
+                <div
+                  className={`panel-cta${
+                    paths.length > 0 ? " panel-cta-ready" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="primary primary-cta"
+                    onClick={onStart}
+                    disabled={!canStart}
+                    title={startButtonTitle}
+                  >
+                    Start transfer
+                  </button>
+                  <span className="panel-cta-hint">
+                    {paths.length > 0
+                      ? `${paths.length} file${paths.length === 1 ? "" : "s"} ready`
+                      : "Add files to continue"}
+                  </span>
+                </div>
+              </>
+            )}
           </section>
         ) : (
-          <section className="panel" aria-labelledby="receive-heading">
-            <h2 id="receive-heading">Receive</h2>
+          <section
+            className={`panel receive-panel${running ? " receive-panel-active" : ""}`}
+            aria-labelledby="receive-heading"
+          >
+            <h2 id="receive-heading">{running ? "Receiving" : "Receive"}</h2>
             <div className="receive-destination">
               <div className="receive-destination-copy">
                 <span className="receive-destination-label">Save to</span>
@@ -1070,15 +1286,46 @@ function App() {
                   {outDir.trim() ? outDir : "Choose a folder to continue"}
                 </span>
               </div>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => void promptReceiveFolder()}
-                disabled={running}
-              >
-                Change folder
-              </button>
+              {!running && (
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void promptReceiveFolder()}
+                >
+                  Change folder
+                </button>
+              )}
             </div>
+            {running ? (
+              <div className="transfer-stage">
+                <TransferProgressBlock
+                  progress={progress}
+                  mode="receive"
+                  stall={progressStall}
+                  running={running}
+                  showProgress={showProgress}
+                  computedPercent={progressPercent}
+                  formatBytes={formatBytes}
+                  hero={
+                    transferUiPhase === "transferring" ||
+                    transferUiPhase === "finishing"
+                  }
+                  uiPhase={transferUiPhase}
+                />
+
+                <div className="panel-cta panel-cta-running">
+                  <button
+                    type="button"
+                    className="danger primary-cta"
+                    onClick={onCancel}
+                    title="Cancel transfer (Esc)"
+                  >
+                    Cancel transfer
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <label
               className={`field code-field${codeDragOver ? " drag-over" : ""}`}
               onDragEnter={(e) => {
@@ -1180,9 +1427,35 @@ function App() {
                   options to receive from the website.
                 </p>
               )}
+
+                <div
+                  className={`panel-cta${
+                    canStart ? " panel-cta-ready" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="primary primary-cta"
+                    onClick={onStart}
+                    disabled={!canStart}
+                    title={startButtonTitle}
+                  >
+                    Start receive
+                  </button>
+                  <span className="panel-cta-hint">
+                    {!outDir.trim()
+                      ? "Choose a folder first"
+                      : !codeInput.trim()
+                        ? "Enter a code phrase"
+                        : "Ready to receive"}
+                  </span>
+                </div>
+              </>
+            )}
           </section>
         )}
 
+        {!running && phase !== "completed" && (
         <section className="panel options-panel">
           <button
             type="button"
@@ -1435,154 +1708,49 @@ function App() {
             </div>
           )}
         </section>
-
-        {phrase && (
-          <section className="panel phrase" aria-live="polite">
-            <div className="panel-head">
-              <h2>Code phrase</h2>
-              <span className="hint">
-                Share the link or code — phone scans open getcroc.com
-              </span>
-            </div>
-            <div className="phrase-layout">
-              <div className="phrase-main">
-                <div className="phrase-row">
-                  <code>{phrase}</code>
-                </div>
-                {receiveUrl && (
-                  <p className="receive-link">
-                    <a
-                      href={receiveUrl}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        void openUrl(receiveUrl);
-                      }}
-                    >
-                      {receiveUrl}
-                    </a>
-                  </p>
-                )}
-                <div className="row phrase-actions">
-                  <button
-                    type="button"
-                    className={`primary-copy${copied === "link" ? " copied" : ""}`}
-                    onClick={() =>
-                      receiveUrl && void copyText("link", receiveUrl)
-                    }
-                  >
-                    {copied === "link" ? "Copied link" : "Copy receive link"}
-                  </button>
-                  <button
-                    type="button"
-                    className={copied === "phrase" ? "copied" : ""}
-                    onClick={() => void copyText("phrase", phrase)}
-                  >
-                    {copied === "phrase" ? "Copied code" : "Copy code only"}
-                  </button>
-                  <button
-                    type="button"
-                    className={copied === "command" ? "copied" : ""}
-                    onClick={() =>
-                      cliReceiveCommand &&
-                      void copyText("command", cliReceiveCommand)
-                    }
-                  >
-                    {copied === "command" ? "Copied command" : "Copy CLI command"}
-                  </button>
-                </div>
-              </div>
-              {qrDataUrl && (
-                <figure className="qr">
-                  <img
-                    src={qrDataUrl}
-                    alt={`QR code to receive at getcroc.com with code ${phrase}`}
-                  />
-                  <figcaption>Scan to open getcroc.com</figcaption>
-                </figure>
-              )}
-            </div>
-          </section>
         )}
 
-        <section className="actions">
-          {!running ? (
-            <button
-              type="button"
-              className="primary"
-              onClick={onStart}
-              disabled={!canStart}
-              title={
-                canStart
-                  ? "Start transfer (⌘/Ctrl+Enter)"
-                  : mode === "send"
-                    ? "Add files to send"
-                    : !outDir.trim()
-                      ? "Choose a download folder"
-                      : "Enter a code phrase"
-              }
-            >
-              Start
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="danger"
-              onClick={onCancel}
-              title="Cancel transfer (Esc)"
-            >
-              Cancel
-            </button>
-          )}
-          {mode === "receive" && outDir && phase === "completed" && (
-            <button type="button" onClick={openOutFolder}>
+        {mode === "receive" && outDir && phase === "completed" && (
+          <section className="actions actions-minimal">
+            <button type="button" className="primary" onClick={openOutFolder}>
               Open folder
             </button>
-          )}
-          <span className={`status status-${phase}`} aria-live="polite">
-            {running && <span className="pulse" aria-hidden />}
-            {running && showProgress ? progressStatus : phaseLabel[phase]}
-          </span>
-        </section>
-
-        {showProgress && (
-          <section className="panel progress-panel" aria-live="polite">
-            <div className="panel-head">
-              <h2>Transfer progress</h2>
-              {progress.percent != null && (
-                <span className="count">{progress.percent}%</span>
-              )}
-            </div>
-            <div
-              className="progress-track"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progress.percent ?? undefined}
-              aria-label={progressStatus}
-            >
-              <div
-                className="progress-fill"
-                style={{
-                  width: `${Math.min(100, Math.max(0, progress.percent ?? 0))}%`,
-                }}
-              />
-            </div>
-            {progressDetail && (
-              <p className="progress-detail">{progressDetail}</p>
-            )}
-            {progressStall === "hint" && (
-              <p className="progress-stall-hint">
-                Croc is still working — verifying data and waiting on the
-                network. Large files can pause here for a minute or more.
-              </p>
+            {!running && (
+              <span className={`status status-${phase}`} aria-live="polite">
+                {phaseLabel[phase]}
+              </span>
             )}
           </section>
         )}
 
-        <section className="panel log" aria-labelledby="log-heading">
-          <div className="panel-head">
-            <h2 id="log-heading">Status log</h2>
-            {log.length > 0 && (
+        {!running && phase !== "completed" && (
+          <p className="workflow-status" aria-live="polite">
+            <span className={`status status-${phase}`}>{phaseLabel[phase]}</span>
+          </p>
+        )}
+
+        <section
+          className={`panel log${logExpanded ? "" : " log-collapsed"}`}
+          aria-labelledby="log-heading"
+        >
+          <div className="panel-head log-head">
+            <button
+              type="button"
+              className="log-toggle"
+              onClick={() => setLogExpanded((v) => !v)}
+              aria-expanded={logExpanded}
+            >
+              <h2 id="log-heading">Status log</h2>
+              {log.length > 0 && (
+                <span className="count log-count">
+                  {log.length} {log.length === 1 ? "line" : "lines"}
+                </span>
+              )}
+              <span className="chevron" aria-hidden>
+                {logExpanded ? "▾" : "▸"}
+              </span>
+            </button>
+            {logExpanded && log.length > 0 && (
               <button
                 type="button"
                 className="ghost"
@@ -1592,13 +1760,15 @@ function App() {
               </button>
             )}
           </div>
-          <pre ref={logRef}>
-            {log.length
-              ? log.join("\n")
-              : running
-                ? "Waiting for croc output…"
-                : "Output from croc will appear here."}
-          </pre>
+          {logExpanded && (
+            <pre ref={logRef}>
+              {log.length
+                ? log.join("\n")
+                : running
+                  ? "Waiting for croc output…"
+                  : "Output from croc will appear here."}
+            </pre>
+          )}
         </section>
       </main>
 

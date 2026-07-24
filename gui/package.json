@@ -3,7 +3,7 @@
   "description": "Desktop GUI for croc — secure cross-platform encrypted file transfer on macOS, Windows, and Linux. Drag-and-drop, QR codes, LAN mode. No cloud upload.",
   "author": "interfluve-wav <https://github.com/interfluve-wav>",
   "private": true,
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -493,12 +493,388 @@ input:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
 }
 
+.transfer-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.share-phrase {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel));
+  border-radius: var(--radius);
+}
+
+.share-phrase-prominent {
+  padding: 1rem 1.05rem;
+}
+
+.share-phrase-compact {
+  padding: 0.55rem 0.7rem;
+}
+
+.share-phrase-compact .phrase-row code {
+  font-size: 0.95rem;
+}
+
+.share-phrase-compact .qr img {
+  width: 112px;
+  height: 112px;
+}
+
+.share-phrase-prominent .qr img {
+  width: 240px;
+  height: 240px;
+}
+
+.qr-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.qr-button:hover img {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.qr-caption {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.qr-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ink) 40%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+  animation: fade-in 160ms ease;
+}
+
+.qr-modal {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 1rem 1.15rem 1.2rem;
+  box-shadow: 0 14px 44px color-mix(in srgb, var(--ink) 20%, transparent);
+  animation: rise-in 200ms ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.qr-modal .panel-head {
+  width: 100%;
+  margin-bottom: 0.15rem;
+}
+
+.qr-modal-code {
+  margin: 0;
+  text-align: center;
+}
+
+.qr-modal-code code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 1.35rem;
+  letter-spacing: 0.02em;
+  word-break: break-all;
+}
+
+.qr-modal-img {
+  width: min(320px, 78vw);
+  height: auto;
+  aspect-ratio: 1;
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+}
+
+.qr-modal-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.qr-modal-actions {
+  width: 100%;
+  justify-content: center;
+}
+
+.send-panel-sent {
+  border-color: color-mix(in srgb, var(--success-ink) 28%, var(--line));
+  background: color-mix(in srgb, var(--success-bg) 55%, var(--panel));
+}
+
+.sent-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.success-count {
+  color: var(--success-ink);
+  font-weight: 550;
+}
+
+.sent-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.sent-file-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, white);
+}
+
+.sent-file-list .path-name {
+  font-weight: 550;
+}
+
+.sent-file-list .path-full {
+  font-size: 0.78rem;
+  color: var(--muted);
+  word-break: break-all;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.panel-cta-sent {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.panel-cta-sent .primary-cta,
+.panel-cta-sent .primary-cta-secondary {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+}
+
+button.primary-cta-secondary {
+  padding: 0.65rem 1.2rem;
+  font-size: 0.92rem;
+  font-weight: 550;
+}
+
+.sent-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.share-phrase-lead {
+  margin: 0 0 0.65rem;
+  font-size: 0.92rem;
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.share-phrase .phrase-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.transfer-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.transfer-progress-head {
+  margin-bottom: 0.15rem;
+}
+
+.transfer-progress-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.send-panel-active .transfer-progress-hero .progress-track,
+.receive-panel-active .transfer-progress-hero .progress-track {
+  height: 0.75rem;
+}
+
+.send-panel-active .progress-track--indeterminate,
+.receive-panel-active .progress-track--indeterminate {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.workspace-swap-in {
+  animation: workspace-swap-in 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes workspace-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.send-panel-active,
+.receive-panel-active {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 35%, var(--panel));
+}
+
+.send-panel-ready {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+
+.send-panel-ready .drop-zone {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.panel-cta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+}
+
+.panel-cta-ready {
+  margin-top: 1rem;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  margin-bottom: -0.85rem;
+  padding: 0.9rem 1rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel));
+  border-radius: 0 0 calc(var(--radius) - 1px) calc(var(--radius) - 1px);
+}
+
+.panel-cta-running {
+  margin-bottom: -0.85rem;
+}
+
+button.primary-cta {
+  flex: 1;
+  min-width: 10rem;
+  padding: 0.7rem 1.35rem;
+  font-size: 0.96rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.panel-cta-hint {
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.panel-cta-ready .panel-cta-hint {
+  color: color-mix(in srgb, var(--accent) 70%, var(--ink));
+  font-weight: 500;
+}
+
+.workflow-status {
+  margin: -0.15rem 0 0;
+  padding: 0 0.15rem;
+}
+
+.actions-minimal {
+  margin-top: -0.15rem;
+}
+
+.transfer-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.transfer-file-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, white);
+}
+
+.transfer-file-active {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel));
+}
+
+.transfer-file-done .path-name {
+  color: var(--muted);
+}
+
+.transfer-file-check {
+  flex-shrink: 0;
+  width: 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--success-ink);
+}
+
+.transfer-file-done .transfer-file-check {
+  font-weight: 700;
+}
+
+.transfer-file-size {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.transfer-detail {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.receive-active-status {
+  margin-top: 0.75rem;
+}
+
 .progress-track {
   height: 0.55rem;
   background: color-mix(in srgb, var(--bg-accent) 80%, white);
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   border-radius: var(--radius);
   overflow: hidden;
+  position: relative;
 }
 
 .progress-fill {
@@ -508,7 +884,38 @@ input:focus-visible {
     color-mix(in srgb, var(--accent) 85%, white),
     var(--accent)
   );
-  transition: width 180ms ease;
+  transition: width 450ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: width;
+}
+
+.progress-track--indeterminate {
+  position: relative;
+}
+
+.progress-fill--indeterminate {
+  width: 38% !important;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.progress-detail-primary {
+  margin-top: 0.55rem;
+  font-weight: 550;
+  color: var(--ink);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.progress-detail-secondary {
+  margin-top: 0.25rem;
+  opacity: 0.9;
 }
 
 .progress-detail {
@@ -726,6 +1133,36 @@ input:focus-visible {
   animation: pulse 1.1s ease-in-out infinite;
 }
 
+.log-head {
+  margin-bottom: 0;
+}
+
+.log-collapsed .panel-head {
+  margin-bottom: 0;
+}
+
+.log-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.log-toggle h2 {
+  margin: 0;
+}
+
+.log-count {
+  font-weight: 500;
+}
+
 .log pre {
   margin: 0;
   min-height: 6.5rem;
@@ -763,6 +1200,21 @@ input:focus-visible {
   color: var(--success-ink);
   font-weight: 550;
   align-items: center;
+}
+
+.banner.success .banner-action {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.65rem;
+  font-weight: 550;
+}
+
+.banner.success .banner-action:hover {
+  filter: brightness(1.05);
 }
 
 .banner.muted-banner {
