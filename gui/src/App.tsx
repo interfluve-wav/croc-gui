@@ -314,7 +314,7 @@ function App() {
     if (!isTauri) {
       setBinPath("bundled");
       setBinError(null);
-      setCrocVersion("10.6.0");
+      setCrocVersion("10.7.0");
     }
 
     if (cap === "receive") setMode("receive");

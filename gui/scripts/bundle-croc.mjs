@@ -5,7 +5,7 @@
  *
  * Usage:
  *   node scripts/bundle-croc.mjs              # from PATH or CROC_BIN
- *   node scripts/bundle-croc.mjs --download   # fetch latest GitHub release
+ *   node scripts/bundle-croc.mjs --download   # fetch GitHub release (CROC_VERSION or latest)
  *   CROC_BIN=/path/to/croc node scripts/bundle-croc.mjs
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -31,6 +31,7 @@ const destName = isWin ? "croc.exe" : "croc";
 const dest = join(binDir, destName);
 
 const wantDownload = process.argv.includes("--download");
+const requestedVersion = (process.env.CROC_VERSION || "latest").trim() || "latest";
 
 function which(cmd) {
   const probe = isWin ? "where" : "command";
@@ -94,8 +95,11 @@ function assetForHost() {
 
 function downloadLatest() {
   const suffix = assetForHost();
-  const api = "https://api.github.com/repos/schollz/croc/releases/latest";
-  console.log("Fetching latest croc release metadata…");
+  const api =
+    requestedVersion === "latest"
+      ? "https://api.github.com/repos/schollz/croc/releases/latest"
+      : `https://api.github.com/repos/schollz/croc/releases/tags/${encodeURIComponent(requestedVersion)}`;
+  console.log(`Fetching croc release metadata (${requestedVersion})…`);
   const metaRaw = execFileSync("curl", ["-fsSL", api], { encoding: "utf8" });
   const meta = JSON.parse(metaRaw);
   const asset = (meta.assets || []).find((a) =>

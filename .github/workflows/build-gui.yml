@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  CROC_VERSION: latest
+  CROC_VERSION: v10.7.0
 
 jobs:
   build:
@@ -91,7 +91,11 @@ jobs:
           set -euo pipefail
           mkdir -p src-tauri/bin
           ASSET_SUFFIX="${{ matrix.croc_asset }}"
-          DOWNLOAD_URL=$(gh api repos/schollz/croc/releases/latest | node -e '
+          RELEASE_ENDPOINT="repos/schollz/croc/releases/latest"
+          if [ "${CROC_VERSION}" != "latest" ]; then
+            RELEASE_ENDPOINT="repos/schollz/croc/releases/tags/${CROC_VERSION}"
+          fi
+          DOWNLOAD_URL=$(gh api "$RELEASE_ENDPOINT" | node -e '
             const fs = require("fs");
             const data = JSON.parse(fs.readFileSync(0, "utf8"));
             const suffix = process.env.ASSET_SUFFIX;
