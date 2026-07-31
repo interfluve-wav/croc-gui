@@ -31,7 +31,7 @@ const destName = isWin ? "croc.exe" : "croc";
 const dest = join(binDir, destName);
 
 const wantDownload = process.argv.includes("--download");
-const requestedVersion = (process.env.CROC_VERSION || "latest").trim() || "latest";
+const requestedVersion = (process.env.CROC_VERSION || "v11.0.0").trim() || "v11.0.0";
 
 function which(cmd) {
   const probe = isWin ? "where" : "command";
@@ -140,12 +140,35 @@ function downloadLatest() {
   rmSync(tmp, { recursive: true, force: true });
 }
 
+function crocVersionString(binPath) {
+  const result = spawnSync(binPath, ["-v"], { encoding: "utf8" });
+  const out = `${result.stdout || ""}${result.stderr || ""}`.trim();
+  return out.split(/\r?\n/)[0] || "";
+}
+
+function assertCroc11OrLater(binPath) {
+  const line = crocVersionString(binPath);
+  const m = line.match(/(\d+)\.(\d+)/);
+  if (!m) {
+    throw new Error(
+      `Could not parse croc version from "${line}". Use npm run bundle:croc:download.`,
+    );
+  }
+  const major = Number(m[1]);
+  if (major < 11) {
+    throw new Error(
+      `Refusing to bundle ${binPath} (${line}). Croc GUI requires croc v11+ for getcroc.com. Run: npm run bundle:croc:download`,
+    );
+  }
+}
+
 function fromPathOrEnv() {
   const fromEnv = process.env.CROC_BIN;
   if (fromEnv) {
     if (!existsSync(fromEnv) || !statSync(fromEnv).isFile()) {
       throw new Error(`CROC_BIN is set but not a file: ${fromEnv}`);
     }
+    assertCroc11OrLater(fromEnv);
     finalize(fromEnv);
     return;
   }
@@ -153,9 +176,10 @@ function fromPathOrEnv() {
   const found = which("croc") || which("croc.exe");
   if (!found) {
     throw new Error(
-      "croc not found on PATH. Install croc, set CROC_BIN, or run with --download.",
+      "croc not found on PATH. Install croc, set CROC_BIN, or run: npm run bundle:croc:download",
     );
   }
+  assertCroc11OrLater(found);
   finalize(found);
 }
 

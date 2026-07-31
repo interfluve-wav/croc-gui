@@ -8,7 +8,7 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 /// Public croc relay used by getcroc.com (must match for web → app transfers).
-pub const DEFAULT_RELAY: &str = "croc.schollz.com:9009";
+pub const DEFAULT_RELAY: &str = "ipv4.getcroc.com:9009";
 pub const DEFAULT_RELAY_PASS: &str = "pass123";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -383,11 +383,9 @@ pub fn sanitize_code_phrase(raw: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-/// Relay settings for croc spawn. Receive with no custom relay always uses getcroc defaults.
-pub fn resolve_relay_options(
-    opts: &TransferOptions,
-    mode: &TransferMode,
-) -> (Option<String>, Option<String>) {
+/// Relay settings for croc spawn. When relay host is blank, always use getcroc defaults
+/// (v11+ `ipv4.getcroc.com`). Orphan saved relay passwords without a host are ignored.
+pub fn resolve_relay_options(opts: &TransferOptions) -> (Option<String>, Option<String>) {
     if opts.local {
         return (None, None);
     }
@@ -402,24 +400,15 @@ pub fn resolve_relay_options(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty());
 
-    match mode {
-        TransferMode::Receive => match relay {
-            Some(r) => (
-                Some(r.to_string()),
-                Some(pass.unwrap_or(DEFAULT_RELAY_PASS).to_string()),
-            ),
-            // Ignore orphan saved relay password when relay host is empty — matches getcroc.com.
-            None => (
-                Some(DEFAULT_RELAY.to_string()),
-                Some(DEFAULT_RELAY_PASS.to_string()),
-            ),
-        },
-        TransferMode::Send => match (relay, pass) {
-            (Some(r), Some(p)) => (Some(r.to_string()), Some(p.to_string())),
-            (Some(r), None) => (Some(r.to_string()), Some(DEFAULT_RELAY_PASS.to_string())),
-            (None, Some(p)) => (None, Some(p.to_string())),
-            (None, None) => (None, None),
-        },
+    match relay {
+        Some(r) => (
+            Some(r.to_string()),
+            Some(pass.unwrap_or(DEFAULT_RELAY_PASS).to_string()),
+        ),
+        None => (
+            Some(DEFAULT_RELAY.to_string()),
+            Some(DEFAULT_RELAY_PASS.to_string()),
+        ),
     }
 }
 
@@ -440,7 +429,7 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     if opts.local {
         args.push("--local".into());
     }
-    let (relay, pass) = resolve_relay_options(opts, &req.mode);
+    let (relay, pass) = resolve_relay_options(opts);
     if let Some(pass) = pass {
         args.push("--pass".into());
         args.push(pass);
@@ -683,6 +672,15 @@ mod tests {
         }
     }
 
+    fn default_relay_args() -> Vec<String> {
+        vec![
+            "--pass".into(),
+            DEFAULT_RELAY_PASS.into(),
+            "--relay".into(),
+            DEFAULT_RELAY.into(),
+        ]
+    }
+
     #[test]
     fn send_basic_paths() {
         let req = StartTransferRequest {
@@ -693,7 +691,15 @@ mod tests {
             options: opts(),
         };
         let args = build_args(&req).unwrap();
-        assert_eq!(args, vec!["send", "/tmp/a.txt", "/tmp/b"]);
+        let expected = default_relay_args();
+        assert_eq!(
+            args,
+            [
+                &expected[..],
+                &["send".into(), "/tmp/a.txt".into(), "/tmp/b".into()],
+            ]
+            .concat()
+        );
     }
 
     #[test]
@@ -709,7 +715,11 @@ mod tests {
             options,
         };
         let args = build_args(&req).unwrap();
-        assert_eq!(args, vec!["send", "/tmp/a.txt"]);
+        let expected = default_relay_args();
+        assert_eq!(
+            args,
+            [&expected[..], &["send".into(), "/tmp/a.txt".into()]].concat()
+        );
         assert!(!args.iter().any(|a| a == "--zip"));
     }
 
@@ -916,16 +926,21 @@ mod tests {
             options,
         };
         let args = build_args(&req).unwrap();
+        let expected = default_relay_args();
         assert_eq!(
             args,
-            vec![
-                "--socks5",
-                "socks5://user:pass@proxy.example.com:5000",
-                "--connect",
-                "http://alice:secret@proxy.example.com:8080",
-                "send",
-                "/tmp/a.txt",
+            [
+                &expected[..],
+                &[
+                    "--socks5".into(),
+                    "socks5://user:pass@proxy.example.com:5000".into(),
+                    "--connect".into(),
+                    "http://alice:secret@proxy.example.com:8080".into(),
+                    "send".into(),
+                    "/tmp/a.txt".into(),
+                ],
             ]
+            .concat()
         );
     }
 
@@ -1035,6 +1050,24 @@ mod tests {
                 "/tmp/inbox",
             ]
         );
+    }
+
+    #[test]
+    fn send_ignores_orphan_saved_relay_password() {
+        let mut options = opts();
+        options.pass = Some("wrong-password".into());
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec!["/tmp/a.txt".into()],
+            code: None,
+            out_dir: None,
+            options,
+        };
+        let args = build_args(&req).unwrap();
+        assert!(args.contains(&"--pass".to_string()));
+        assert!(args.contains(&DEFAULT_RELAY_PASS.to_string()));
+        assert!(args.contains(&DEFAULT_RELAY.to_string()));
+        assert!(!args.contains(&"wrong-password".to_string()));
     }
 
     #[test]

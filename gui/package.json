@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "bundle:croc": "node scripts/bundle-croc.mjs",
-    "bundle:croc:download": "node scripts/bundle-croc.mjs --download"
+    "bundle:croc:download": "node scripts/bundle-croc.mjs --download",
+    "verify:e2e": "node scripts/verify-transfer-e2e.mjs",
+    "verify:gui-smoke": "node scripts/verify-gui-smoke.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

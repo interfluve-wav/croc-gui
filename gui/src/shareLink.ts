@@ -1,7 +1,7 @@
 /** Official croc web receiver — scan QR or share link to receive in a browser. */
 export const GETCROC_RECEIVE_BASE = "https://getcroc.com/";
 /** Must match getcroc.com config.js — required for web send → app receive. */
-export const GETCROC_RELAY = "croc.schollz.com:9009";
+export const GETCROC_RELAY = "ipv4.getcroc.com:9009";
 export const GETCROC_RELAY_PASS = "pass123";
 
 export type ParsedReceiveInput = {
@@ -101,11 +101,32 @@ export function relayHandshakeErrorMessage(line: string): string | null {
   if (
     lower.includes("problem with decoding") ||
     lower.includes("password mismatch") ||
+    lower.includes("bad password") ||
+    lower.includes("bad response") ||
+    lower.includes("could not connect") ||
     lower.includes("ips unmarshal error")
   ) {
-    return "Could not connect to the croc relay — relay password or address may not match the sender. For getcroc.com, leave Relay and Relay password blank in Options (uses pass123 on croc.schollz.com:9009).";
+    return "Could not connect to the croc relay — relay password or address may not match the sender. For getcroc.com, leave Relay and Relay password blank in Options (uses pass123 on ipv4.getcroc.com:9009).";
   }
   return null;
+}
+
+/** Legacy v10 public relay hosts — clear so v11 getcroc defaults apply. */
+export const LEGACY_RELAY_HOSTS = [
+  "croc.schollz.com:9009",
+  "croc.schollz.com",
+  "62.238.29.226:9009",
+  "62.238.29.226",
+] as const;
+
+export function normalizeSavedRelay(relay: string): string {
+  const trimmed = relay.trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  if (LEGACY_RELAY_HOSTS.some((host) => lower === host.toLowerCase())) {
+    return "";
+  }
+  return trimmed;
 }
 
 export type ShareLinkOptions = {

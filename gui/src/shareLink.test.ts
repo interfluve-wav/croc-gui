@@ -3,6 +3,7 @@ import {
   buildCliReceiveCommand,
   buildReceiveUrl,
   normalizeCodePhrase,
+  normalizeSavedRelay,
   parseReceiveInput,
   relayHandshakeErrorMessage,
   sanitizeCodePhrase,
@@ -76,6 +77,23 @@ describe("relayHandshakeErrorMessage", () => {
         "problem with decoding: invalid character 'ä' looking for beginning of value",
       ),
     ).toContain("getcroc.com");
+  });
+
+  it("maps bad password and connect errors", () => {
+    expect(relayHandshakeErrorMessage("bad password")).toContain("getcroc.com");
+    expect(relayHandshakeErrorMessage("could not connect to relay")).toContain(
+      "getcroc.com",
+    );
+  });
+});
+
+describe("normalizeSavedRelay", () => {
+  it("clears legacy v10 relay hosts", () => {
+    expect(normalizeSavedRelay("croc.schollz.com:9009")).toBe("");
+    expect(normalizeSavedRelay("62.238.29.226:9009")).toBe("");
+    expect(normalizeSavedRelay("ipv4.getcroc.com:9009")).toBe(
+      "ipv4.getcroc.com:9009",
+    );
   });
 });
 

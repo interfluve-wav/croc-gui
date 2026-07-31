@@ -16,7 +16,7 @@ permissions:
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  CROC_VERSION: v10.7.0
+  CROC_VERSION: v11.0.0
 
 jobs:
   release:

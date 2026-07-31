@@ -20,6 +20,7 @@ import {
   buildReceiveUrl,
   GETCROC_RELAY,
   normalizeCodePhrase,
+  normalizeSavedRelay,
   parseReceiveInput,
   relayHandshakeErrorMessage,
   sanitizeCodePhrase,
@@ -54,7 +55,20 @@ type LineEvent = {
 type ExitEvent = {
   code: number | null;
   cancelled: boolean;
+  sessionId?: number;
 };
+
+function isInternalStatusLogLine(line: string): boolean {
+  return (
+    line.startsWith("Connecting to relay") ||
+    line.startsWith("Saving received files") ||
+    line.startsWith("Spawning:")
+  );
+}
+
+function usefulLogLines(lines: string[]): string[] {
+  return lines.filter((line) => !isInternalStatusLogLine(line));
+}
 
 type Phase = "idle" | "running" | "completed" | "failed" | "cancelled";
 
@@ -199,11 +213,17 @@ function loadPrefs(): Prefs {
       localStorage.getItem(PREFS_KEY) ?? localStorage.getItem(PREFS_KEY_V1);
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<Prefs>;
+    const relayRaw = typeof parsed.relay === "string" ? parsed.relay : "";
+    const relay = normalizeSavedRelay(relayRaw);
+    const migratedLegacyRelay = relayRaw.trim() !== "" && relay === "";
     return {
       outDir: typeof parsed.outDir === "string" ? parsed.outDir : "",
-      relay: typeof parsed.relay === "string" ? parsed.relay : "",
-      relayPass:
-        typeof parsed.relayPass === "string" ? parsed.relayPass : "",
+      relay,
+      relayPass: migratedLegacyRelay
+        ? ""
+        : typeof parsed.relayPass === "string"
+          ? parsed.relayPass
+          : "",
       rememberRelayPass: parsed.rememberRelayPass === true,
       socks5: typeof parsed.socks5 === "string" ? parsed.socks5 : "",
       connect: typeof parsed.connect === "string" ? parsed.connect : "",
@@ -273,12 +293,15 @@ function App() {
   const runningRef = useRef(false);
   const phaseRef = useRef(phase);
   const aboutOpenRef = useRef(aboutOpen);
+  const logLinesRef = useRef<string[]>([]);
+  const transferSessionRef = useRef(0);
 
   const running = phase === "running";
   modeRef.current = mode;
   runningRef.current = running;
   phaseRef.current = phase;
   aboutOpenRef.current = aboutOpen;
+  logLinesRef.current = log;
 
   useEffect(() => {
     if (
@@ -314,7 +337,7 @@ function App() {
     if (!isTauri) {
       setBinPath("bundled");
       setBinError(null);
-      setCrocVersion("10.7.0");
+      setCrocVersion("11.0.0");
     }
 
     if (cap === "receive") setMode("receive");
@@ -487,6 +510,15 @@ function App() {
         },
       );
       unlistenExit = await listen<ExitEvent>("transfer-exit", (event) => {
+        if (phaseRef.current !== "running") {
+          return;
+        }
+        if (
+          event.payload.sessionId != null &&
+          event.payload.sessionId !== transferSessionRef.current
+        ) {
+          return;
+        }
         lastProgressAt.current = null;
         if (event.payload.cancelled) {
           setPhase("cancelled");
@@ -501,11 +533,26 @@ function App() {
         } else {
           setPhase("failed");
           setProgress(emptyProgress());
-          setError(
-            `Transfer failed${
-              event.payload.code != null ? ` (exit ${event.payload.code})` : ""
-            }. Check the status log.`,
+          const recent = logLinesRef.current;
+          const useful = usefulLogLines(recent);
+          const handshakeLine = useful.find((line) =>
+            relayHandshakeErrorMessage(line),
           );
+          const handshakeErr = handshakeLine
+            ? relayHandshakeErrorMessage(handshakeLine)
+            : null;
+          const exitCode =
+            event.payload.code != null ? ` (exit ${event.payload.code})` : "";
+          if (handshakeErr) {
+            setError(handshakeErr);
+          } else if (useful.length === 0) {
+            setError(
+              `Transfer failed${exitCode}. Croc exited before producing output. Check Status log for “Spawning:” args, confirm bundled croc is v11 (npm run bundle:croc:download), and leave Options → Relay blank for getcroc.com.`,
+            );
+          } else {
+            const tail = useful.slice(-3).join(" · ");
+            setError(`Transfer failed${exitCode}. ${tail}`);
+          }
         }
         void invoke("reset_transfer").catch(() => undefined);
       });
@@ -529,7 +576,7 @@ function App() {
       window.clearTimeout(finishTimer.current);
       finishTimer.current = null;
     }
-    if (phase !== "running") return;
+    if (phase !== "running" || modeRef.current !== "receive") return;
     const atCapacity =
       progress.percent === 100 &&
       progress.bytesTotal != null &&
@@ -762,7 +809,7 @@ function App() {
     setError(null);
     setLog([]);
     setCopied(null);
-    setLogExpanded(false);
+    setLogExpanded(true);
     setCompletedFiles(new Set());
     prevActiveFile.current = null;
     setOptionsOpen(false);
@@ -808,7 +855,7 @@ function App() {
         setTransferPaths([]);
         return;
       }
-      await invoke("start_transfer", {
+      const session = await invoke<number>("start_transfer", {
         request: {
           mode: mode === "send" ? "send" : "receive",
           paths: mode === "send" ? paths : [],
@@ -829,6 +876,7 @@ function App() {
           },
         },
       });
+      transferSessionRef.current = session;
     } catch (err) {
       setPhase("idle");
       setTransferPaths([]);
@@ -1182,6 +1230,19 @@ function App() {
                     <span className="count">{paths.length} selected</span>
                   )}
                 </div>
+
+                {(options.local ||
+                  options.relay.trim() ||
+                  options.relayPass.trim() ||
+                  options.socks5.trim() ||
+                  options.connect.trim()) && (
+                  <p className="banner warn" role="status">
+                    Custom relay, LAN-only, or proxy is enabled —{" "}
+                    <strong>getcroc.com</strong> uses the public relay (
+                    <code>{GETCROC_RELAY}</code>). Clear those options to send to
+                    the website.
+                  </p>
+                )}
 
                 <div
                   ref={dropZoneRef}

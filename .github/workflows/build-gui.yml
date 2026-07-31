@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  CROC_VERSION: v10.7.0
+  CROC_VERSION: v11.0.0
 
 jobs:
   build:

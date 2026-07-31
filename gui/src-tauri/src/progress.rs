@@ -132,6 +132,9 @@ fn infer_phase(
     if lower.contains("securing") {
         return Some("connecting".into());
     }
+    if lower.contains("hash") {
+        return Some("preparing".into());
+    }
     if is_near_complete(percent, bytes_done, bytes_total) {
         return Some("finishing".into());
     }
@@ -143,9 +146,6 @@ fn infer_phase(
     }
     if lower.contains("connect") || lower.contains("waiting") {
         return Some("connecting".into());
-    }
-    if lower.contains("hash") {
-        return Some("preparing".into());
     }
     match percent {
         Some(100) => Some("finishing".into()),
@@ -323,6 +323,14 @@ mod tests {
         assert_eq!(p.bytes_total, Some(96_200_000));
         assert_eq!(p.phase.as_deref(), Some("finishing"));
         assert!(p.label.unwrap().contains("croc-send"));
+    }
+
+    #[test]
+    fn parse_hashing_progress_is_preparing_not_finishing() {
+        let line = "Hashing archive.zip  99% |██████████████████| (2.2 GB/s)";
+        let p = parse_progress_line(line).unwrap();
+        assert_eq!(p.percent, Some(99));
+        assert_eq!(p.phase.as_deref(), Some("preparing"));
     }
 
     #[test]

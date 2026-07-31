@@ -29,6 +29,10 @@ struct TransferState {
     pending_zip: Mutex<Option<PendingZip>>,
     /// Temp dir holding staged files + the zip we send (cleaned after transfer).
     send_zip_workdir: Mutex<Option<PathBuf>>,
+    /// Recent croc output for failure diagnostics (cleared on each start).
+    recent_lines: Mutex<Vec<String>>,
+    /// Incremented on each start_transfer; wait threads only emit exit for their session.
+    transfer_session: Mutex<u64>,
 }
 
 #[derive(Clone, Serialize)]
@@ -44,6 +48,54 @@ struct TransferLinePayload {
 struct TransferExitPayload {
     code: Option<i32>,
     cancelled: bool,
+    session_id: u64,
+}
+
+fn bump_transfer_session(state: &TransferState) -> Result<u64, String> {
+    let mut guard = state.transfer_session.lock().map_err(|e| e.to_string())?;
+    *guard += 1;
+    Ok(*guard)
+}
+
+fn current_transfer_session(state: &TransferState) -> u64 {
+    state
+        .transfer_session
+        .lock()
+        .map(|g| *g)
+        .unwrap_or(0)
+}
+
+fn should_emit_transfer_exit(state: &TransferState, session_id: u64) -> bool {
+    current_transfer_session(state) == session_id
+}
+
+fn format_spawn_log(args: &[String]) -> String {
+    let mut parts = vec!["croc".to_string()];
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            parts.push("***".to_string());
+            redact_next = false;
+            continue;
+        }
+        if arg == "--pass" {
+            parts.push("--pass".to_string());
+            redact_next = true;
+            continue;
+        }
+        parts.push(arg.clone());
+    }
+    format!("Spawning: {}", parts.join(" "))
+}
+
+fn push_recent_line(state: &TransferState, line: &str) {
+    if let Ok(mut guard) = state.recent_lines.lock() {
+        guard.push(line.to_string());
+        if guard.len() > 80 {
+            let drain = guard.len() - 80;
+            guard.drain(0..drain);
+        }
+    }
 }
 
 fn emit_transfer_output(app: &AppHandle, stream: &str, raw_line: &str) {
@@ -51,6 +103,8 @@ fn emit_transfer_output(app: &AppHandle, stream: &str, raw_line: &str) {
     if line.is_empty() {
         return;
     }
+    let state = app.state::<TransferState>();
+    push_recent_line(&state, line);
     let code = extract_code_phrase(line);
     if let Some(progress) = parse_progress_line(line) {
         let _ = app.emit("transfer-progress", progress);
@@ -176,9 +230,13 @@ fn start_transfer(
     app: AppHandle,
     state: State<'_, TransferState>,
     request: StartTransferRequest,
-) -> Result<(), String> {
+) -> Result<u64, String> {
+    let session_id = bump_transfer_session(&state)?;
     // Clear any stale croc child before starting (e.g. receive still listening).
     let _ = stop_transfer_child(&state, None);
+    if let Ok(mut lines) = state.recent_lines.lock() {
+        lines.clear();
+    }
 
     let resource_dir = app.path().resource_dir().ok();
     let program = resolve_croc_bin(resource_dir.as_deref())?;
@@ -237,6 +295,15 @@ fn start_transfer(
         }
     };
 
+    let _ = app.emit(
+        "transfer-line",
+        TransferLinePayload {
+            stream: "stdout".into(),
+            line: format_spawn_log(&args),
+            code: None,
+        },
+    );
+
     // Prepare post-receive zip snapshot before spawn so we only pack new items.
     let pending_zip = if matches!(request.mode, TransferMode::Receive)
         && request.options.zip_after_receive
@@ -266,6 +333,33 @@ fn start_transfer(
     }
 
     if matches!(request.mode, TransferMode::Send) {
+        let relay_hint = if request.options.local {
+            "LAN only".to_string()
+        } else if request
+            .options
+            .relay
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .is_some()
+        {
+            request
+                .options
+                .relay
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default()
+        } else {
+            format!("{DEFAULT_RELAY} (getcroc.com)")
+        };
+        let _ = app.emit(
+            "transfer-line",
+            TransferLinePayload {
+                stream: "stdout".into(),
+                line: format!("Connecting to relay {relay_hint}…"),
+                code: None,
+            },
+        );
         if let Some(code) = request
             .options
             .custom_code
@@ -347,7 +441,7 @@ fn start_transfer(
             // croc v10+ secure receive mode — positional codes exit 0 without transferring.
             command.env("CROC_SECRET", code);
             if !request.options.local {
-                let (_, relay_pass) = resolve_relay_options(&request.options, &request.mode);
+                let (_, relay_pass) = resolve_relay_options(&request.options);
                 if let Some(pass) = relay_pass {
                     command.env("CROC_PASS", pass);
                 }
@@ -401,6 +495,7 @@ fn start_transfer(
     }
 
     let app_wait = app.clone();
+    let wait_session = session_id;
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(100));
         let state = app_wait.state::<TransferState>();
@@ -415,6 +510,13 @@ fn start_transfer(
                     *guard = None;
                     drop(guard);
 
+                    if !should_emit_transfer_exit(&state, wait_session) {
+                        return;
+                    }
+
+                    // Let stdout/stderr pump threads flush before the UI reads exit.
+                    std::thread::sleep(Duration::from_millis(200));
+
                     if code == Some(0) {
                         maybe_zip_after_receive(&app_wait);
                     } else if let Ok(mut zip_guard) = state.pending_zip.lock() {
@@ -422,11 +524,33 @@ fn start_transfer(
                     }
                     clear_send_zip_workdir(&state);
 
+                    if code != Some(0) {
+                        let recent = state
+                            .recent_lines
+                            .lock()
+                            .map(|g| g.clone())
+                            .unwrap_or_default();
+                        if recent.is_empty() {
+                            let _ = app_wait.emit(
+                                "transfer-line",
+                                TransferLinePayload {
+                                    stream: "stderr".into(),
+                                    line: format!(
+                                        "croc exited with code {}",
+                                        code.unwrap_or(-1)
+                                    ),
+                                    code: None,
+                                },
+                            );
+                        }
+                    }
+
                     let _ = app_wait.emit(
                         "transfer-exit",
                         TransferExitPayload {
                             code,
                             cancelled: false,
+                            session_id: wait_session,
                         },
                     );
                     return;
@@ -435,6 +559,9 @@ fn start_transfer(
                 Err(_) => {
                     *guard = None;
                     drop(guard);
+                    if !should_emit_transfer_exit(&state, wait_session) {
+                        return;
+                    }
                     if let Ok(mut zip_guard) = state.pending_zip.lock() {
                         *zip_guard = None;
                     }
@@ -444,6 +571,7 @@ fn start_transfer(
                         TransferExitPayload {
                             code: None,
                             cancelled: false,
+                            session_id: wait_session,
                         },
                     );
                     return;
@@ -453,7 +581,7 @@ fn start_transfer(
         }
     });
 
-    Ok(())
+    Ok(session_id)
 }
 
 fn maybe_zip_after_receive(app: &AppHandle) {
@@ -560,13 +688,15 @@ fn stop_transfer_child(
         let exit_code = if cancelled {
             None
         } else {
-            code.or(Some(0))
+            code
         };
+        let session_id = current_transfer_session(state);
         let _ = app.emit(
             "transfer-exit",
             TransferExitPayload {
                 code: exit_code,
                 cancelled,
+                session_id,
             },
         );
     }
@@ -606,6 +736,8 @@ pub fn run() {
             child: Mutex::new(None),
             pending_zip: Mutex::new(None),
             send_zip_workdir: Mutex::new(None),
+            recent_lines: Mutex::new(Vec::new()),
+            transfer_session: Mutex::new(0),
         })
         .invoke_handler(tauri::generate_handler![
             croc_bin_status,
