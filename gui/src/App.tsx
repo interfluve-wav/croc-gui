@@ -102,7 +102,7 @@ type ProgressState = {
 
 type CopiedKind = "link" | "phrase" | "command" | null;
 
-const GUI_VERSION = "0.1.6";
+const GUI_VERSION = "0.1.7";
 const PREFS_KEY = "croc-gui-prefs-v2";
 const PREFS_KEY_V1 = "croc-gui-prefs-v1";
 
