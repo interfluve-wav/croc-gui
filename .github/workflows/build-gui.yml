@@ -32,7 +32,7 @@ jobs:
             rust_target: aarch64-apple-darwin
             artifact_glob: gui/src-tauri/target/aarch64-apple-darwin/release/bundle/**/*
           - name: macOS x86_64
-            os: macos-14
+            os: macos-13
             croc_asset: macOS-64bit.tar.gz
             tauri_args: --target x86_64-apple-darwin
             rust_target: x86_64-apple-darwin
