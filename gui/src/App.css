@@ -97,11 +97,20 @@ body {
 .header-btn-row {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Icon-only controls (theme toggle) get a generous, square hit target. */
+.icon-btn {
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  font-size: 1rem;
 }
 
 .about-btn {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
 }
 
 .main {
@@ -181,15 +190,31 @@ code {
 
 .panel-cta {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Primary call-to-action: a full-width hero button that clearly
+   dominates the panel and reads as the obvious next step. */
+.cta-primary {
+  width: 100%;
   justify-content: center;
-  gap: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.panel-cta .row {
+  justify-content: center;
 }
 
 .panel-cta-hint {
   font-size: 0.8rem;
   color: var(--muted);
+  text-align: center;
 }
 
 .sent-file-list {
@@ -363,18 +388,38 @@ code {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-box);
   background: transparent;
-  padding: 0.15rem 0;
+  padding: 0.5rem 0.6rem;
   cursor: pointer;
   font: inherit;
   font-size: 0.95rem;
   font-weight: 550;
   color: var(--ink);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.options-toggle:hover:not(:disabled) {
+  background: var(--bg-accent);
+  border-color: var(--line);
+}
+
+.options-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
 }
 
 .chevron {
   color: var(--muted);
+  display: inline-block;
+  transition: transform 180ms ease;
+}
+
+/* Collapsible toggles always render ▸; rotate it open via aria-expanded. */
+[aria-expanded="true"] > .chevron,
+[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
 }
 
 .options,
@@ -433,8 +478,61 @@ code {
   color: var(--muted);
 }
 
-.status-idle {
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+/* Compact status pill shown in the footer meta row. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--muted);
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.status-pill.status-running {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: var(--accent-soft);
+}
+
+.status-pill.status-running .status-dot {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.status-pill.status-completed {
+  color: var(--success-ink);
+  border-color: color-mix(in srgb, var(--success-ink) 40%, var(--line));
+  background: var(--success-bg);
+}
+
+.status-pill.status-failed,
+.status-pill.status-cancelled {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
+  background: var(--error-bg);
 }
 
 .status-running {
@@ -450,22 +548,18 @@ code {
   color: var(--danger);
 }
 
-.workflow-status {
-  margin: 0;
-  text-align: center;
-  font-size: 0.9rem;
-}
-
-/* Log */
+/* Log: compact terminal-style output. Consecutive duplicate lines are
+   collapsed with a ×N counter (see appendLogLine) to stay readable. */
 .log pre {
   margin: 0;
-  padding: 0.6rem;
-  max-height: 14rem;
+  padding: 0.45rem 0.55rem;
+  max-height: 8.5rem;
   overflow: auto;
+  scroll-behavior: smooth;
   background: color-mix(in srgb, var(--bg-accent) 70%, transparent);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: 0.72rem;
+  line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -480,6 +574,16 @@ code {
   cursor: pointer;
   font: inherit;
   flex: 1;
+}
+
+.log-toggle:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.log-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--radius-box);
 }
 
 .log-count {
@@ -595,20 +699,26 @@ code {
   color: var(--muted);
 }
 
-/* Options & credits */
+/* Footer: a slim single-line status bar — transfer status on the left,
+   credits/links on the right. Wraps gracefully on very narrow windows. */
 .footer {
   margin-top: auto;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
 }
 
-.footer-meta {
+.footer-status {
   display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  white-space: nowrap;
 }
 
 .muted {
@@ -623,10 +733,8 @@ code {
   margin: 0;
   color: var(--muted);
   line-height: 1.4;
-}
-
-.credit-gui {
-  font-size: 0.75rem;
+  text-align: right;
+  white-space: nowrap;
 }
 
 button.linkish {
@@ -669,6 +777,100 @@ button.linkish:hover:not(:disabled) {
 .about-blurb {
   margin: 0 0 0.75rem;
   font-size: 0.88rem;
+}
+
+/* ---- Motion ---------------------------------------------------------- */
+/* Panels rise in whenever they mount (tab switches, phase changes), with a
+   light stagger so the workflow reads as one smooth cascade. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.header,
+.footer {
+  animation: rise 280ms cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+
+.main > * {
+  animation: rise 260ms cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+
+.main > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.main > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.main > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.main > *:nth-child(n + 5) {
+  animation-delay: 150ms;
+}
+
+/* Buttons lift slightly on hover and press down on click. */
+.btn {
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.btn:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.btn:not(:disabled):active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Smooth progress bar fill instead of jumpy steps. */
+.progress::-webkit-progress-value {
+  transition: width 300ms ease;
+}
+
+.progress::-moz-progress-bar {
+  transition: width 300ms ease;
+}
+
+/* Modal + success badge entrances. */
+.modal-box {
+  animation: pop-in 180ms cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+
+.success-count {
+  animation: pop-in 240ms cubic-bezier(0.22, 0.9, 0.32, 1) both;
+}
+
+/* Status pill cross-fades between phase colors. */
+.status-pill {
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
 }
 
 @media (max-width: 640px) {

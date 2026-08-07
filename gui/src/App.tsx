@@ -8,6 +8,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 import { applyProxyFieldNormalization } from "./proxyPaste";
+import { appendLogLine } from "./logUtils";
 import { SharePhraseBlock } from "./components/SharePhraseBlock";
 import { TransferFileList } from "./components/TransferFileList";
 import { TransferProgressBlock } from "./components/TransferProgressBlock";
@@ -615,7 +616,7 @@ function App() {
     (async () => {
       unlistenLine = await listen<LineEvent>("transfer-line", (event) => {
         const { line, code } = event.payload;
-        setLog((prev) => [...prev.slice(-199), line]);
+        setLog((prev) => appendLogLine(prev, line));
         if (code) {
           setPhrase(code);
         }
@@ -1250,7 +1251,7 @@ function App() {
           <div className="header-btn-row">
           <button
             type="button"
-            className="btn btn-ghost btn-sm about-btn"
+            className="btn btn-ghost icon-btn"
             onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
             aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -1396,7 +1397,7 @@ function App() {
                 <div className="panel-cta panel-cta-running">
                   <button
                     type="button"
-                    className="btn btn-error"
+                    className="btn btn-error cta-primary"
                     onClick={onCancel}
                     title="Cancel transfer (Esc)"
                   >
@@ -1429,27 +1430,29 @@ function App() {
                 <div className="panel-cta panel-cta-sent">
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-primary btn-lg cta-primary"
                     onClick={() => void onStartAnotherTransfer()}
                   >
                     Start another transfer
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-primary"
-                    onClick={() => void onSendSameFilesAgain()}
-                    disabled={
-                      (transferPaths.length > 0 ? transferPaths : paths)
-                        .length === 0
-                    }
-                  >
-                    Send same files again
-                  </button>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-primary"
+                      onClick={() => void onSendSameFilesAgain()}
+                      disabled={
+                        (transferPaths.length > 0 ? transferPaths : paths)
+                          .length === 0
+                      }
+                    >
+                      Send same files again
+                    </button>
+                  </div>
+                  <p className="sent-hint panel-cta-hint">
+                    Start another for a clean slate, or resend the same files
+                    with a fresh code.
+                  </p>
                 </div>
-                <p className="sent-hint">
-                  Start another for a clean slate, or send the same files with a
-                  fresh code.
-                </p>
               </div>
             ) : (
               <>
@@ -1489,14 +1492,14 @@ function App() {
                       <div className="row">
                         <button
                           type="button"
-                          className="btn btn-outline btn-primary btn-sm"
+                          className="btn btn-outline btn-primary"
                           onClick={pickSendPaths}
                         >
                           Add files
                         </button>
                         <button
                           type="button"
-                          className="btn btn-outline btn-primary btn-sm"
+                          className="btn btn-outline btn-primary"
                           onClick={pickSendFolder}
                         >
                           Add folder
@@ -1508,21 +1511,21 @@ function App() {
                       <div className="row">
                         <button
                           type="button"
-                          className="btn btn-outline btn-primary btn-sm"
+                          className="btn btn-outline btn-primary"
                           onClick={pickSendPaths}
                         >
                           Add files
                         </button>
                         <button
                           type="button"
-                          className="btn btn-outline btn-primary btn-sm"
+                          className="btn btn-outline btn-primary"
                           onClick={pickSendFolder}
                         >
                           Add folder
                         </button>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-sm"
+                          className="btn btn-ghost"
                           onClick={() => setPaths([])}
                         >
                           Clear
@@ -1539,7 +1542,7 @@ function App() {
                             </span>
                             <button
                               type="button"
-                              className="btn btn-ghost btn-xs path-remove"
+                              className="btn btn-ghost btn-sm path-remove"
                               onClick={() => removePath(p)}
                               aria-label={`Remove ${basename(p)}`}
                             >
@@ -1560,16 +1563,18 @@ function App() {
                 >
                   <button
                     type="button"
-                    className="btn btn-primary btn-lg"
+                    className="btn btn-primary btn-lg cta-primary"
                     onClick={onStart}
                     disabled={!canStart}
                     title={startButtonTitle}
                   >
-                    Start transfer
+                    {paths.length > 0
+                      ? `Send ${paths.length} file${paths.length === 1 ? "" : "s"}`
+                      : "Start transfer"}
                   </button>
                   <span className="panel-cta-hint">
                     {paths.length > 0
-                      ? `${paths.length} file${paths.length === 1 ? "" : "s"} ready`
+                      ? "Ready — a short code will be generated"
                       : "Add files to continue"}
                   </span>
                 </div>
@@ -1623,7 +1628,7 @@ function App() {
                 <div className="panel-cta panel-cta-running">
                   <button
                     type="button"
-                    className="btn btn-error"
+                    className="btn btn-error cta-primary"
                     onClick={onCancel}
                     title="Cancel transfer (Esc)"
                   >
@@ -1744,7 +1749,7 @@ function App() {
                 >
                   <button
                     type="button"
-                    className="btn btn-primary btn-lg"
+                    className="btn btn-primary btn-lg cta-primary"
                     onClick={onStart}
                     disabled={!canStart}
                     title={startButtonTitle}
@@ -1774,7 +1779,7 @@ function App() {
           >
             <span>Options</span>
             <span className="chevron" aria-hidden>
-              {optionsOpen ? "▾" : "▸"}
+              ▸
             </span>
           </button>
           {optionsOpen && (
@@ -2004,7 +2009,7 @@ function App() {
               >
                 <span>Advanced network</span>
                 <span className="chevron" aria-hidden>
-                  {advancedOpen ? "▾" : "▸"}
+                  ▸
                 </span>
               </button>
               {advancedOpen && (
@@ -2107,12 +2112,6 @@ function App() {
           </section>
         )}
 
-        {!running && phase !== "completed" && (
-          <p className="workflow-status" aria-live="polite">
-            <span className={`status status-${phase}`}>{phaseLabel[phase]}</span>
-          </p>
-        )}
-
         {!running && phase !== "completed" && history.length > 0 && (
           <section className="panel history-panel">
             <button
@@ -2125,10 +2124,11 @@ function App() {
                 Recent transfers <span className="count">({history.length})</span>
               </span>
               <span className="chevron" aria-hidden>
-                {historyOpen ? "▾" : "▸"}
+                ▸
               </span>
             </button>
             {historyOpen && (
+              <>
               <ul className="history-list">
                 {history.map((h) => (
                   <li key={h.id} className="history-item">
@@ -2157,16 +2157,17 @@ function App() {
                   </li>
                 ))}
               </ul>
+              <div className="history-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={clearHistory}
+                >
+                  Clear history
+                </button>
+              </div>
+              </>
             )}
-            <div className="history-actions">
-              <button
-                type="button"
-                className="btn btn-ghost btn-xs"
-                onClick={clearHistory}
-              >
-                Clear history
-              </button>
-            </div>
           </section>
         )}
 
@@ -2188,7 +2189,7 @@ function App() {
                 </span>
               )}
               <span className="chevron" aria-hidden>
-                {logExpanded ? "▾" : "▸"}
+                ▸
               </span>
             </button>
             {logExpanded && log.length > 0 && (
@@ -2214,16 +2215,21 @@ function App() {
       </main>
 
       <footer className="footer">
-        <div className="footer-meta">
-          {binPath ? (
-            <span className="muted" title={binPath}>
-              Using bundled croc
-            </span>
-          ) : (
-            <span className="muted">croc binary not ready</span>
-          )}
+        <div className="footer-status">
+          <span
+            className={`status-pill status-${phase}`}
+            aria-live="polite"
+            title={
+              binPath
+                ? `Status: ${phaseLabel[phase]} · bundled croc ready`
+                : `Status: ${phaseLabel[phase]} · croc binary not ready`
+            }
+          >
+            <span className="status-dot" aria-hidden />
+            {phaseLabel[phase]}
+          </span>
           <span className="muted shortcuts">
-            {running ? "Esc cancel" : "⌘/Ctrl+Enter start"}
+            {running ? "Esc to cancel" : "⌘/Ctrl+Enter to start"}
           </span>
         </div>
         <p className="credit">
@@ -2234,24 +2240,6 @@ function App() {
             onClick={() => void openUrl("https://github.com/schollz/croc")}
           >
             schollz/croc
-          </button>{" "}
-          ·{" "}
-          <button
-            type="button"
-            className="linkish"
-            onClick={() => void openUrl("https://github.com/sponsors/schollz")}
-          >
-            Sponsor schollz
-          </button>
-        </p>
-        <p className="credit credit-gui">
-          GUI by{" "}
-          <button
-            type="button"
-            className="linkish"
-            onClick={() => void openUrl("https://github.com/interfluve-wav")}
-          >
-            interfluve-wav
           </button>
           {" · "}
           <button
@@ -2261,7 +2249,15 @@ function App() {
               void openUrl("https://github.com/interfluve-wav/croc-gui")
             }
           >
-            croc-gui
+            GUI repo
+          </button>
+          {" · "}
+          <button
+            type="button"
+            className="linkish"
+            onClick={() => setAboutOpen(true)}
+          >
+            Credits
           </button>
         </p>
       </footer>
