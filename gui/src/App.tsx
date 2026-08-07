@@ -102,9 +102,116 @@ type ProgressState = {
 
 type CopiedKind = "link" | "phrase" | "command" | null;
 
-const GUI_VERSION = "0.1.7";
+const GUI_VERSION = "0.1.8";
 const PREFS_KEY = "croc-gui-prefs-v2";
 const PREFS_KEY_V1 = "croc-gui-prefs-v1";
+const THEME_KEY = "croc-gui-theme";
+const HISTORY_KEY = "croc-gui-history";
+const PRESETS_KEY = "croc-gui-presets";
+const HISTORY_CAP = 20;
+
+type Theme = "light" | "dark";
+
+type HistoryEntry = {
+  id: string;
+  mode: Mode;
+  phrase: string;
+  count: number;
+  at: number;
+  status: "completed" | "failed" | "cancelled";
+};
+
+type Preset = {
+  id: string;
+  name: string;
+  options: TransferOptions;
+};
+
+function loadTheme(): Theme {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    if (v === "light" || v === "dark") return v;
+  } catch {
+    /* ignore */
+  }
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  ) {
+    return "dark";
+  }
+  return "light";
+}
+
+function saveTheme(t: Theme) {
+  try {
+    localStorage.setItem(THEME_KEY, t);
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as HistoryEntry[];
+    if (!Array.isArray(arr)) return [];
+    return arr;
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(entries: HistoryEntry[]) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_CAP)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadPresets(): Preset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as Preset[];
+    if (!Array.isArray(arr)) return [];
+    return arr;
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: Preset[]) {
+  try {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+  } catch {
+    /* ignore */
+  }
+}
+
+function nextId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function notify(title: string, body: string) {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    const n = new Notification(title, { body });
+    n.onclick = () => {
+      try {
+        window.focus();
+      } catch {
+        /* ignore */
+      }
+    };
+  } catch {
+    /* ignore */
+  }
+}
 
 const defaultOptions = (): TransferOptions => ({
   customCode: "",
@@ -244,6 +351,33 @@ function savePrefs(prefs: Prefs) {
 
 function App() {
   const initialPrefs = useMemo(() => loadPrefs(), []);
+  const [theme, setTheme] = useState<Theme>(() => loadTheme());
+  const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory());
+  const [presets, setPresets] = useState<Preset[]>(() => loadPresets());
+  const [presetName, setPresetName] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme =
+      theme === "dark" ? "croc-dark" : "croc";
+    saveTheme(theme);
+  }, [theme]);
+
+  useEffect(() => saveHistory(history), [history]);
+  useEffect(() => savePresets(presets), [presets]);
+
+  useEffect(() => {
+    if (
+      typeof Notification !== "undefined" &&
+      Notification.permission === "default"
+    ) {
+      try {
+        void Notification.requestPermission();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
   const [mode, setMode] = useState<Mode>("send");
   const [paths, setPaths] = useState<string[]>([]);
   /** Snapshot of send paths when a transfer starts (stable UI during run). */
@@ -295,6 +429,11 @@ function App() {
   const aboutOpenRef = useRef(aboutOpen);
   const logLinesRef = useRef<string[]>([]);
   const transferSessionRef = useRef(0);
+  const phraseRef = useRef<string | null>(null);
+  const codeInputRef = useRef("");
+  const transferPathsRef = useRef<string[]>([]);
+  const pathsRef = useRef<string[]>([]);
+  const transferStartRef = useRef<number | null>(null);
 
   const running = phase === "running";
   modeRef.current = mode;
@@ -302,6 +441,10 @@ function App() {
   phaseRef.current = phase;
   aboutOpenRef.current = aboutOpen;
   logLinesRef.current = log;
+  phraseRef.current = phrase;
+  codeInputRef.current = codeInput;
+  transferPathsRef.current = transferPaths;
+  pathsRef.current = paths;
 
   useEffect(() => {
     if (
@@ -523,6 +666,7 @@ function App() {
         if (event.payload.cancelled) {
           setPhase("cancelled");
           setProgress(emptyProgress());
+          recordHistory("cancelled");
         } else if (event.payload.code === 0) {
           setPhase("completed");
           setProgress((prev) => ({
@@ -530,9 +674,13 @@ function App() {
             percent: 100,
             phase: "finishing",
           }));
+          recordHistory("completed");
+          notify("Croc — transfer complete", "Your transfer finished successfully.");
         } else {
           setPhase("failed");
           setProgress(emptyProgress());
+          recordHistory("failed");
+          notify("Croc — transfer failed", "The transfer did not complete. Check the Status log.");
           const recent = logLinesRef.current;
           const useful = usefulLogLines(recent);
           const handshakeLine = useful.find((line) =>
@@ -680,6 +828,19 @@ function App() {
     }
     return null;
   }, [progress.percent, progress.bytesDone, progress.bytesTotal]);
+
+  const etaSeconds = useMemo(() => {
+    void progressTick;
+    if (!running || progressPercent == null || progressPercent <= 0) {
+      return null;
+    }
+    const elapsed = (Date.now() - (transferStartRef.current ?? Date.now())) / 1000;
+    if (elapsed <= 0) return null;
+    const totalEstimate = elapsed / (progressPercent / 100);
+    const remaining = totalEstimate - elapsed;
+    if (!Number.isFinite(remaining) || remaining <= 0) return null;
+    return remaining;
+  }, [running, progressPercent, progressTick]);
 
   const progressStall = useMemo(() => {
     void progressTick;
@@ -830,6 +991,7 @@ function App() {
         : null,
     );
     setPhase("running");
+    transferStartRef.current = Date.now();
 
     const portNum = options.port.trim()
       ? Number(options.port.trim())
@@ -967,6 +1129,60 @@ function App() {
     }
   }
 
+  function recordHistory(status: HistoryEntry["status"]) {
+    const ph = phraseRef.current ?? codeInputRef.current.trim();
+    if (!ph) return;
+    const m = modeRef.current;
+    const count =
+      m === "send"
+        ? transferPathsRef.current.length || pathsRef.current.length
+        : 1;
+    setHistory((prev) =>
+      [
+        {
+          id: nextId(),
+          mode: m,
+          phrase: ph,
+          count,
+          at: Date.now(),
+          status,
+        },
+        ...prev,
+      ].slice(0, HISTORY_CAP),
+    );
+  }
+
+  function applyPreset(p: Preset) {
+    setOptions(p.options);
+    setError(null);
+  }
+
+  function saveCurrentPreset() {
+    const name = presetName.trim();
+    if (!name) return;
+    setPresets((prev) => [
+      { id: nextId(), name, options: { ...options } },
+      ...prev.filter((x) => x.name !== name),
+    ]);
+    setPresetName("");
+  }
+
+  function deletePreset(id: string) {
+    setPresets((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function clearHistory() {
+    setHistory([]);
+  }
+
+  function reuseHistory(h: HistoryEntry) {
+    if (h.phrase) {
+      setCodeInput(h.phrase);
+      setMode("receive");
+    }
+    void copyText("phrase", h.phrase);
+  }
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
@@ -1031,19 +1247,30 @@ function App() {
           <p className="tagline">Send and receive files with a short code</p>
         </div>
         <div className="header-actions">
+          <div className="header-btn-row">
           <button
             type="button"
-            className="ghost about-btn"
+            className="btn btn-ghost btn-sm about-btn"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm about-btn"
             onClick={() => setAboutOpen(true)}
           >
             About
           </button>
-          <div className="mode-toggle" role="tablist" aria-label="Mode">
+          </div>
+          <div className="tabs tabs-box" role="tablist" aria-label="Mode">
             <button
               type="button"
               role="tab"
               aria-selected={mode === "send"}
-              className={mode === "send" ? "active" : ""}
+              className={`tab tab-lg${mode === "send" ? " tab-active" : ""}`}
               onClick={() => void switchMode("send")}
               disabled={running}
             >
@@ -1053,7 +1280,7 @@ function App() {
               type="button"
               role="tab"
               aria-selected={mode === "receive"}
-              className={mode === "receive" ? "active" : ""}
+              className={`tab tab-lg${mode === "receive" ? " tab-active" : ""}`}
               onClick={() => void switchMode("receive")}
               disabled={running}
             >
@@ -1064,17 +1291,20 @@ function App() {
       </header>
 
       {binError && (
-        <div className="banner error" role="alert">
-          Bundled croc missing. Run <code>npm run bundle:croc</code> and rebuild.
-          <span className="banner-detail">{binError}</span>
+        <div className="alert alert-error" role="alert">
+          <span>
+            Bundled croc missing. Run <code>npm run bundle:croc</code> and
+            rebuild.
+          </span>
+          <span className="alert-detail">{binError}</span>
         </div>
       )}
       {error && (
-        <div className="banner error" role="alert">
+        <div className="alert alert-error" role="alert">
           <span>{error}</span>
           <button
             type="button"
-            className="banner-dismiss"
+            className="btn btn-sm btn-ghost"
             onClick={() => setError(null)}
             aria-label="Dismiss error"
           >
@@ -1083,14 +1313,12 @@ function App() {
         </div>
       )}
       {phase === "completed" && mode === "receive" && (
-        <div className="banner success" role="status">
-          <span className="success-mark" aria-hidden>
-            ✓
-          </span>
+        <div className="alert alert-success" role="status">
+          <span aria-hidden>✓</span>
           <span>Transfer completed successfully.</span>
           <button
             type="button"
-            className="banner-action"
+            className="btn btn-sm btn-ghost"
             onClick={() => void onStartAnotherTransfer()}
           >
             Start another transfer
@@ -1098,7 +1326,7 @@ function App() {
         </div>
       )}
       {phase === "cancelled" && (
-        <div className="banner muted-banner" role="status">
+        <div className="alert" role="status">
           Transfer cancelled.
         </div>
       )}
@@ -1148,6 +1376,7 @@ function App() {
                     showProgress={showProgress}
                     computedPercent={progressPercent}
                     formatBytes={formatBytes}
+                    etaSeconds={etaSeconds}
                     hero={
                       transferUiPhase === "transferring" ||
                       transferUiPhase === "finishing"
@@ -1167,13 +1396,13 @@ function App() {
                 <div className="panel-cta panel-cta-running">
                   <button
                     type="button"
-                    className="danger primary-cta"
+                    className="btn btn-error"
                     onClick={onCancel}
                     title="Cancel transfer (Esc)"
                   >
                     Cancel transfer
                   </button>
-                </div>
+                  </div>
               </div>
             ) : phase === "completed" ? (
               <div className="sent-stage">
@@ -1200,14 +1429,14 @@ function App() {
                 <div className="panel-cta panel-cta-sent">
                   <button
                     type="button"
-                    className="primary primary-cta"
+                    className="btn btn-primary"
                     onClick={() => void onStartAnotherTransfer()}
                   >
                     Start another transfer
                   </button>
                   <button
                     type="button"
-                    className="ghost primary-cta-secondary"
+                    className="btn btn-outline btn-primary"
                     onClick={() => void onSendSameFilesAgain()}
                     disabled={
                       (transferPaths.length > 0 ? transferPaths : paths)
@@ -1231,12 +1460,12 @@ function App() {
                   )}
                 </div>
 
-                {(options.local ||
+              {(options.local ||
                   options.relay.trim() ||
                   options.relayPass.trim() ||
                   options.socks5.trim() ||
                   options.connect.trim()) && (
-                  <p className="banner warn" role="status">
+                  <p className="alert alert-warning" role="status">
                     Custom relay, LAN-only, or proxy is enabled —{" "}
                     <strong>getcroc.com</strong> uses the public relay (
                     <code>{GETCROC_RELAY}</code>). Clear those options to send to
@@ -1258,10 +1487,18 @@ function App() {
                         Files or folders — or use the buttons below
                       </p>
                       <div className="row">
-                        <button type="button" onClick={pickSendPaths}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-primary btn-sm"
+                          onClick={pickSendPaths}
+                        >
                           Add files
                         </button>
-                        <button type="button" onClick={pickSendFolder}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-primary btn-sm"
+                          onClick={pickSendFolder}
+                        >
                           Add folder
                         </button>
                       </div>
@@ -1269,15 +1506,23 @@ function App() {
                   ) : (
                     <>
                       <div className="row">
-                        <button type="button" onClick={pickSendPaths}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-primary btn-sm"
+                          onClick={pickSendPaths}
+                        >
                           Add files
                         </button>
-                        <button type="button" onClick={pickSendFolder}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-primary btn-sm"
+                          onClick={pickSendFolder}
+                        >
                           Add folder
                         </button>
                         <button
                           type="button"
-                          className="ghost"
+                          className="btn btn-ghost btn-sm"
                           onClick={() => setPaths([])}
                         >
                           Clear
@@ -1294,7 +1539,7 @@ function App() {
                             </span>
                             <button
                               type="button"
-                              className="ghost path-remove"
+                              className="btn btn-ghost btn-xs path-remove"
                               onClick={() => removePath(p)}
                               aria-label={`Remove ${basename(p)}`}
                             >
@@ -1315,7 +1560,7 @@ function App() {
                 >
                   <button
                     type="button"
-                    className="primary primary-cta"
+                    className="btn btn-primary btn-lg"
                     onClick={onStart}
                     disabled={!canStart}
                     title={startButtonTitle}
@@ -1350,7 +1595,7 @@ function App() {
               {!running && (
                 <button
                   type="button"
-                  className="ghost"
+                  className="btn btn-ghost btn-sm"
                   onClick={() => void promptReceiveFolder()}
                 >
                   Change folder
@@ -1367,6 +1612,7 @@ function App() {
                   showProgress={showProgress}
                   computedPercent={progressPercent}
                   formatBytes={formatBytes}
+                  etaSeconds={etaSeconds}
                   hero={
                     transferUiPhase === "transferring" ||
                     transferUiPhase === "finishing"
@@ -1377,7 +1623,7 @@ function App() {
                 <div className="panel-cta panel-cta-running">
                   <button
                     type="button"
-                    className="danger primary-cta"
+                    className="btn btn-error"
                     onClick={onCancel}
                     title="Cancel transfer (Esc)"
                   >
@@ -1441,6 +1687,8 @@ function App() {
             >
               <span>Code phrase</span>
               <input
+              className="input w-full"
+
                 value={codeInput}
                 onChange={(e) => setCodeInput(e.target.value)}
                 placeholder="Paste or drop a code — e.g. mango-lake-42"
@@ -1478,16 +1726,16 @@ function App() {
               with the same code. Uses relay{" "}
               <code>{GETCROC_RELAY}</code> when Options relay is blank.
             </p>
-            {mode === "receive" &&
-              (options.local ||
-                options.relay.trim() ||
-                options.relayPass.trim()) && (
-                <p className="banner warn" role="status">
-                  Custom relay, relay password, or LAN-only is enabled —{" "}
-                  <strong>getcroc.com</strong> uses the public relay. Clear those
-                  options to receive from the website.
-                </p>
-              )}
+                {mode === "receive" &&
+                  (options.local ||
+                    options.relay.trim() ||
+                    options.relayPass.trim()) && (
+                    <p className="alert alert-warning" role="status">
+                      Custom relay, relay password, or LAN-only is enabled —{" "}
+                      <strong>getcroc.com</strong> uses the public relay. Clear
+                      those options to receive from the website.
+                    </p>
+                  )}
 
                 <div
                   className={`panel-cta${
@@ -1496,7 +1744,7 @@ function App() {
                 >
                   <button
                     type="button"
-                    className="primary primary-cta"
+                    className="btn btn-primary btn-lg"
                     onClick={onStart}
                     disabled={!canStart}
                     title={startButtonTitle}
@@ -1535,6 +1783,8 @@ function App() {
                 <label className="field">
                   <span>Custom code (min 6 characters)</span>
                   <input
+              className="input w-full"
+
                     value={options.customCode}
                     onChange={(e) =>
                       setOptions((o) => ({ ...o, customCode: e.target.value }))
@@ -1548,6 +1798,8 @@ function App() {
               <label className="field">
                 <span>Relay (remembered)</span>
                 <input
+              className="input w-full"
+
                   value={options.relay}
                   onChange={(e) =>
                     setOptions((o) => ({ ...o, relay: e.target.value }))
@@ -1560,6 +1812,8 @@ function App() {
               <label className="field">
                 <span>Relay password</span>
                 <input
+              className="input w-full"
+
                   type="password"
                   value={options.relayPass}
                   onChange={(e) =>
@@ -1573,6 +1827,8 @@ function App() {
               </label>
               <label className="check">
                 <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                   type="checkbox"
                   checked={rememberRelayPass}
                   onChange={(e) => setRememberRelayPass(e.target.checked)}
@@ -1584,6 +1840,8 @@ function App() {
                 <label className="field">
                   <span>Base port</span>
                   <input
+              className="input w-full"
+
                     value={options.port}
                     onChange={(e) =>
                       setOptions((o) => ({ ...o, port: e.target.value }))
@@ -1598,6 +1856,8 @@ function App() {
                 {mode === "send" && (
                   <label className="check">
                     <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                       type="checkbox"
                       checked={options.zip}
                       onChange={(e) =>
@@ -1617,6 +1877,8 @@ function App() {
                 {mode === "receive" && (
                   <label className="check">
                     <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                       type="checkbox"
                       checked={options.zipAfterReceive}
                       onChange={(e) =>
@@ -1632,6 +1894,8 @@ function App() {
                 )}
                 <label className="check">
                   <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                     type="checkbox"
                     checked={options.yes}
                     onChange={(e) =>
@@ -1643,6 +1907,8 @@ function App() {
                 </label>
                 <label className="check">
                   <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                     type="checkbox"
                     checked={options.overwrite}
                     onChange={(e) =>
@@ -1658,6 +1924,8 @@ function App() {
                 <label className="check check-stack">
                   <span className="check-row">
                     <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                       type="checkbox"
                       checked={options.local}
                       onChange={(e) =>
@@ -1679,6 +1947,55 @@ function App() {
                 </p>
               )}
 
+              <div className="preset-block">
+                <span className="preset-label">Presets</span>
+                <div className="preset-input-row">
+                  <input
+                    className="input input w-full"
+                    placeholder="Name this setup"
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-primary btn-sm"
+                    onClick={saveCurrentPreset}
+                    disabled={!presetName.trim()}
+                  >
+                    Save current
+                  </button>
+                </div>
+                {presets.length > 0 && (
+                  <div className="preset-chips">
+                    {presets.map((p) => (
+                      <span key={p.id} className="preset-chip">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          title="Apply preset"
+                          onClick={() => applyPreset(p)}
+                        >
+                          {p.name}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs preset-del"
+                          aria-label={`Delete preset ${p.name}`}
+                          onClick={() => deletePreset(p.id)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="option-hint">
+                  Presets snapshot your current Options and Advanced settings so
+                  you can apply them again instantly.
+                </p>
+              </div>
+
               <button
                 type="button"
                 className="options-toggle advanced-toggle"
@@ -1695,6 +2012,8 @@ function App() {
                   <label className="field">
                     <span>SOCKS5 proxy</span>
                     <input
+              className="input w-full"
+
                       value={options.socks5}
                       onChange={(e) =>
                         setOptions((o) => ({ ...o, socks5: e.target.value }))
@@ -1724,6 +2043,8 @@ function App() {
                   <label className="field">
                     <span>HTTP proxy</span>
                     <input
+              className="input w-full"
+
                       value={options.connect}
                       onChange={(e) =>
                         setOptions((o) => ({ ...o, connect: e.target.value }))
@@ -1752,6 +2073,8 @@ function App() {
                   </label>
                   <label className="check">
                     <input
+              className="checkbox checkbox-primary checkbox-sm"
+
                       type="checkbox"
                       checked={rememberProxies}
                       onChange={(e) => setRememberProxies(e.target.checked)}
@@ -1773,7 +2096,7 @@ function App() {
 
         {mode === "receive" && outDir && phase === "completed" && (
           <section className="actions actions-minimal">
-            <button type="button" className="primary" onClick={openOutFolder}>
+            <button type="button" className="btn btn-primary" onClick={openOutFolder}>
               Open folder
             </button>
             {!running && (
@@ -1788,6 +2111,63 @@ function App() {
           <p className="workflow-status" aria-live="polite">
             <span className={`status status-${phase}`}>{phaseLabel[phase]}</span>
           </p>
+        )}
+
+        {!running && phase !== "completed" && history.length > 0 && (
+          <section className="panel history-panel">
+            <button
+              type="button"
+              className="options-toggle"
+              onClick={() => setHistoryOpen((v) => !v)}
+              aria-expanded={historyOpen}
+            >
+              <span>
+                Recent transfers <span className="count">({history.length})</span>
+              </span>
+              <span className="chevron" aria-hidden>
+                {historyOpen ? "▾" : "▸"}
+              </span>
+            </button>
+            {historyOpen && (
+              <ul className="history-list">
+                {history.map((h) => (
+                  <li key={h.id} className="history-item">
+                    <span
+                      className={`history-status history-${h.status}`}
+                      aria-hidden
+                    >
+                      {h.status === "completed"
+                        ? "✓"
+                        : h.status === "failed"
+                          ? "✕"
+                          : "–"}
+                    </span>
+                    <button
+                      type="button"
+                      className="linkish history-phrase"
+                      title={h.phrase}
+                      onClick={() => void reuseHistory(h)}
+                    >
+                      {h.phrase}
+                    </button>
+                    <span className="history-meta">
+                      {h.mode === "send" ? `sent ${h.count}` : "received"} ·{" "}
+                      {new Date(h.at).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="history-actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={clearHistory}
+              >
+                Clear history
+              </button>
+            </div>
+          </section>
         )}
 
         <section
@@ -1814,7 +2194,7 @@ function App() {
             {logExpanded && log.length > 0 && (
               <button
                 type="button"
-                className="ghost"
+                className="btn btn-ghost btn-sm"
                 onClick={() => void onClearLog()}
               >
                 {phase === "idle" ? "Clear log" : "Clear & reset"}
@@ -1888,12 +2268,12 @@ function App() {
 
       {aboutOpen && (
         <div
-          className="about-backdrop"
+          className="modal modal-open"
           role="presentation"
           onClick={() => setAboutOpen(false)}
         >
           <div
-            className="about-panel"
+            className="modal-box"
             role="dialog"
             aria-modal="true"
             aria-labelledby="about-title"
@@ -1903,7 +2283,7 @@ function App() {
               <h2 id="about-title">About Croc GUI</h2>
               <button
                 type="button"
-                className="ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => setAboutOpen(false)}
               >
                 Close
@@ -1955,6 +2335,7 @@ function App() {
             <div className="row">
               <button
                 type="button"
+                className="btn btn-outline btn-sm"
                 onClick={() =>
                   void openUrl("https://github.com/interfluve-wav/croc-gui")
                 }
@@ -1963,12 +2344,14 @@ function App() {
               </button>
               <button
                 type="button"
+                className="btn btn-outline btn-sm"
                 onClick={() => void openUrl("https://github.com/schollz/croc")}
               >
                 schollz/croc
               </button>
               <button
                 type="button"
+                className="btn btn-outline btn-sm"
                 onClick={() =>
                   void openUrl("https://github.com/sponsors/schollz")
                 }
@@ -1977,6 +2360,10 @@ function App() {
               </button>
             </div>
           </div>
+          <div
+            className="modal-backdrop"
+            onClick={() => setAboutOpen(false)}
+          />
         </div>
       )}
     </div>

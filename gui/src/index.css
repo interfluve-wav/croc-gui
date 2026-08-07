@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@plugin "daisyui";
+
+/* daisyUI custom theme mirroring Croc-GUI's warm, stamped-paper palette. */
+@plugin "daisyui/theme" {
+  name: "croc";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #fffaf2;
+  --color-base-200: #f3efe6;
+  --color-base-300: #e7dfd0;
+  --color-base-content: #1c1915;
+  --color-primary: #0f6b4c;
+  --color-primary-content: #f5fff9;
+  --color-secondary: #0d7a5a;
+  --color-secondary-content: #f5fff9;
+  --color-accent: #b45309;
+  --color-accent-content: #fff7ed;
+  --color-neutral: #1c1915;
+  --color-neutral-content: #f3efe6;
+  --color-info: #2563eb;
+  --color-info-content: #eff6ff;
+  --color-success: #0f6b4c;
+  --color-success-content: #e6f4ec;
+  --color-warning: #b45309;
+  --color-warning-content: #fff7ed;
+  --color-error: #9b2c2c;
+  --color-error-content: #fde8e8;
+
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/* Dark companion theme, toggled with the app's theme control. */
+@plugin "daisyui/theme" {
+  name: "croc-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #1b1916;
+  --color-base-200: #232019;
+  --color-base-300: #2e2a21;
+  --color-base-content: #ece5d8;
+  --color-primary: #3ecf9b;
+  --color-primary-content: #06281c;
+  --color-secondary: #57c98f;
+  --color-secondary-content: #06281c;
+  --color-accent: #d98a3d;
+  --color-accent-content: #1c1004;
+  --color-neutral: #ece5d8;
+  --color-neutral-content: #1b1916;
+  --color-info: #6da8ff;
+  --color-info-content: #0b1830;
+  --color-success: #3ecf9b;
+  --color-success-content: #06281c;
+  --color-warning: #e0a03c;
+  --color-warning-content: #201303;
+  --color-error: #e06a6a;
+  --color-error-content: #260707;
+
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+

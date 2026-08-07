@@ -3,7 +3,7 @@
   "description": "Desktop GUI for croc — secure cross-platform encrypted file transfer on macOS, Windows, and Linux. Drag-and-drop, QR codes, LAN mode. No cloud upload.",
   "author": "interfluve-wav <https://github.com/interfluve-wav>",
   "private": true,
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,11 +28,14 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "daisyui": "^5.7.16",
+    "tailwindcss": "^4.3.3",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^3.2.4"

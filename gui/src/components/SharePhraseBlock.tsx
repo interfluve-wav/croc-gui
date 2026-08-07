@@ -30,23 +30,24 @@ export function SharePhraseBlock({
   return (
     <>
       <div
-        className={`share-phrase share-phrase-${variant}`}
+        className="flex flex-col gap-2"
         aria-live="polite"
       >
         {prominent && (
-          <p className="share-phrase-lead">
+          <p className="text-sm opacity-80">
             Share this code so the receiver can download your files
           </p>
         )}
-        <div className="phrase-layout">
-          <div className="phrase-main">
-            <div className="phrase-row">
-              <code>{phrase}</code>
-            </div>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-2">
+            <code className="inline-block w-fit rounded-sm bg-base-300/70 px-3 py-1.5 font-mono text-lg tracking-wide text-base-content">
+              {phrase}
+            </code>
             {prominent && receiveUrl && (
-              <p className="receive-link">
+              <p className="text-xs opacity-80">
                 <a
                   href={receiveUrl}
+                  className="link link-primary break-all"
                   onClick={(e) => {
                     e.preventDefault();
                     onOpenUrl(receiveUrl);
@@ -56,10 +57,10 @@ export function SharePhraseBlock({
                 </a>
               </p>
             )}
-            <div className="phrase-actions">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                className={`primary-copy${copied === "link" ? " copied" : ""}`}
+                className={`btn btn-primary btn-sm${copied === "link" ? " btn-success" : ""}`}
                 onClick={() => receiveUrl && onCopy("link", receiveUrl)}
                 disabled={!receiveUrl}
               >
@@ -68,7 +69,7 @@ export function SharePhraseBlock({
               {!prominent && (
                 <button
                   type="button"
-                  className={`ghost${copied === "phrase" ? " copied" : ""}`}
+                  className={`btn btn-outline btn-primary btn-sm${copied === "phrase" ? " btn-success" : ""}`}
                   onClick={() => onCopy("phrase", phrase)}
                 >
                   {copied === "phrase" ? "Copied" : "Copy code"}
@@ -78,7 +79,7 @@ export function SharePhraseBlock({
                 <>
                   <button
                     type="button"
-                    className={`ghost${copied === "phrase" ? " copied" : ""}`}
+                    className={`btn btn-outline btn-primary btn-sm${copied === "phrase" ? " btn-success" : ""}`}
                     onClick={() => onCopy("phrase", phrase)}
                   >
                     {copied === "phrase" ? "Copied code" : "Copy code only"}
@@ -86,7 +87,7 @@ export function SharePhraseBlock({
                   {cliReceiveCommand && (
                     <button
                       type="button"
-                      className={`ghost${copied === "command" ? " copied" : ""}`}
+                      className={`btn btn-outline btn-primary btn-sm${copied === "command" ? " btn-success" : ""}`}
                       onClick={() => onCopy("command", cliReceiveCommand)}
                     >
                       {copied === "command" ? "Copied" : "Copy CLI command"}
@@ -98,7 +99,7 @@ export function SharePhraseBlock({
                 <>
                   <button
                     type="button"
-                    className="ghost share-more-toggle"
+                    className="btn btn-ghost btn-sm"
                     onClick={() => setMoreOpen((v) => !v)}
                     aria-expanded={moreOpen}
                   >
@@ -107,7 +108,7 @@ export function SharePhraseBlock({
                   {moreOpen && (
                     <button
                       type="button"
-                      className={`ghost${copied === "command" ? " copied" : ""}`}
+                      className={`btn btn-outline btn-primary btn-sm${copied === "command" ? " btn-success" : ""}`}
                       onClick={() => onCopy("command", cliReceiveCommand)}
                     >
                       {copied === "command" ? "Copied" : "Copy CLI command"}
@@ -120,18 +121,16 @@ export function SharePhraseBlock({
           {qrDataUrl && (
             <button
               type="button"
-              className="qr qr-button"
+              className="btn btn-ghost p-1"
               onClick={() => setQrExpanded(true)}
               title="Enlarge QR code"
               aria-label="Enlarge QR code"
             >
               <img
                 src={qrDataUrl}
+                className="h-20 w-20 rounded-sm"
                 alt={`QR code to receive at getcroc.com with code ${phrase}`}
               />
-              {prominent && (
-                <span className="qr-caption">Tap to enlarge</span>
-              )}
             </button>
           )}
         </div>
@@ -139,40 +138,42 @@ export function SharePhraseBlock({
 
       {qrExpanded && qrDataUrl && (
         <div
-          className="qr-modal-backdrop"
+          className="modal modal-open"
           role="presentation"
           onClick={() => setQrExpanded(false)}
         >
           <div
-            className="qr-modal"
+            className="modal-box"
             role="dialog"
             aria-modal="true"
             aria-labelledby="qr-modal-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="panel-head">
-              <h2 id="qr-modal-title">Scan to receive</h2>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="qr-modal-title" className="text-lg font-semibold">
+                Scan to receive
+              </h2>
               <button
                 type="button"
-                className="ghost"
+                className="btn btn-sm btn-ghost"
                 onClick={() => setQrExpanded(false)}
               >
                 Close
               </button>
             </div>
-            <p className="qr-modal-code">
-              <code>{phrase}</code>
-            </p>
+            <p className="my-3 text-center font-mono text-xl">{phrase}</p>
             <img
-              className="qr-modal-img"
+              className="mx-auto w-56 rounded-sm"
               src={qrDataUrl}
               alt={`Large QR code for ${phrase}`}
             />
-            <p className="qr-modal-hint">Scan to open getcroc.com</p>
-            <div className="phrase-actions qr-modal-actions">
+            <p className="mt-3 text-center text-sm opacity-70">
+              Scan to open getcroc.com
+            </p>
+            <div className="mt-4 flex justify-center gap-2">
               <button
                 type="button"
-                className={`primary-copy${copied === "link" ? " copied" : ""}`}
+                className={`btn btn-primary btn-sm${copied === "link" ? " btn-success" : ""}`}
                 onClick={() => receiveUrl && onCopy("link", receiveUrl)}
                 disabled={!receiveUrl}
               >
@@ -180,13 +181,17 @@ export function SharePhraseBlock({
               </button>
               <button
                 type="button"
-                className={`ghost${copied === "phrase" ? " copied" : ""}`}
+                className={`btn btn-outline btn-primary btn-sm${copied === "phrase" ? " btn-success" : ""}`}
                 onClick={() => onCopy("phrase", phrase)}
               >
                 {copied === "phrase" ? "Copied code" : "Copy code"}
               </button>
             </div>
           </div>
+          <div
+            className="modal-backdrop"
+            onClick={() => setQrExpanded(false)}
+          />
         </div>
       )}
     </>
