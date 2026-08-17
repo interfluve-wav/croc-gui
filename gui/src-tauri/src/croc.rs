@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -10,6 +11,63 @@ use zip::{CompressionMethod, ZipWriter};
 /// Public croc relay used by getcroc.com (must match for web → app transfers).
 pub const DEFAULT_RELAY: &str = "ipv4.getcroc.com:9009";
 pub const DEFAULT_RELAY_PASS: &str = "pass123";
+
+/// Cached result of probing whether the bundled croc binary accepts `--json`.
+/// Populated by `croc_supports_json()`.
+static CROC_SUPPORTS_JSON: OnceLock<bool> = OnceLock::new();
+
+/// Returns `true` if the bundled croc binary accepts `--json`. The result
+/// is cached after the first successful probe; if the probe fails (binary
+/// missing, version unknown), we conservatively return `false` so the GUI
+/// falls back to the regex parser.
+pub fn croc_supports_json() -> bool {
+    *CROC_SUPPORTS_JSON.get_or_init(|| {
+        let Some(bin) = current_croc_bin() else {
+            return false;
+        };
+        probe_croc_json(&bin).unwrap_or(false)
+    })
+}
+
+/// Internal: resolve the croc binary from `CROC_BIN` env, falling back to
+/// the well-known dev path. We intentionally avoid the Tauri resource_dir
+/// resolution here because this runs in a synchronous test context.
+fn current_croc_bin() -> Option<std::path::PathBuf> {
+    if let Ok(p) = std::env::var("CROC_BIN") {
+        let path = std::path::PathBuf::from(p);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join(if cfg!(windows) { "croc.exe" } else { "croc" });
+    if dev_path.is_file() {
+        return Some(dev_path);
+    }
+    None
+}
+
+/// Probe the croc binary to see if it accepts `--json`. We do this by
+/// invoking `croc --json send --help` and checking if croc treats `--json`
+/// as a known flag. croc v10 will reject with "flag provided but not
+/// defined" and exit non-zero; croc v11+ will exit 0 and show the help text.
+fn probe_croc_json(bin: &std::path::Path) -> Option<bool> {
+    use std::process::Command;
+    let out = Command::new(bin)
+        .args(["--json", "send", "--help"])
+        .output()
+        .ok()?;
+    if out.status.success() {
+        return Some(true);
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains("flag provided but not defined") {
+        return Some(false);
+    }
+    // Unknown failure — be conservative.
+    None
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +95,15 @@ pub struct TransferOptions {
     /// HTTP proxy (`croc --connect` / `$HTTP_PROXY`).
     #[serde(default)]
     pub connect: Option<String>,
+    /// Use croc's `--json` mode for machine-readable events. Requires croc v11+
+    /// (the feature was added in schollz/croc#1237). Older croc binaries will
+    /// fall back to the regex-based parser in `progress.rs`.
+    #[serde(default = "default_true")]
+    pub use_json_events: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -423,6 +490,11 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     if opts.overwrite || is_receive {
         args.push("--overwrite".into());
     }
+    // Request machine-readable NDJSON events from croc v11+ (schollz/croc#1237).
+    // Older croc versions reject unknown flags — `croc_supports_json` gates this.
+    if opts.use_json_events && croc_supports_json() {
+        args.push("--json".into());
+    }
     if is_receive {
         args.push("--ignore-stdin".into());
     }
@@ -669,6 +741,7 @@ mod tests {
             pass: None,
             socks5: None,
             connect: None,
+            use_json_events: false, // test against the non-JSON arg set
         }
     }
 
@@ -1224,5 +1297,66 @@ mod tests {
             None => std::env::remove_var("CROC_BIN"),
         }
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn build_args_omits_json_when_disabled() {
+        // Default opts() already sets use_json_events: false, so --json
+        // must not appear even when the binary supports it.
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec!["/tmp/x.txt".into()],
+            code: None,
+            out_dir: None,
+            options: opts(),
+        };
+        let args = build_args(&req).unwrap();
+        assert!(
+            !args.contains(&"--json".to_string()),
+            "--json should not be present when use_json_events=false; got: {:?}",
+            args
+        );
+    }
+
+    #[test]
+    fn probe_croc_json_detects_v10_rejection() {
+        // Write a fake "croc" that rejects --json with the v10 error string.
+        let tmp = std::env::temp_dir().join(format!("fake-croc-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let bin = tmp.join(if cfg!(windows) { "croc.exe" } else { "croc" });
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho 'flag provided but not defined: -json' >&2\nexit 1\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let result = probe_croc_json(&bin);
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(result, Some(false));
+    }
+
+    #[test]
+    fn probe_croc_json_detects_v11_acceptance() {
+        // Write a fake "croc" that exits 0 when given --json.
+        let tmp = std::env::temp_dir().join(format!("fake-croc-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let bin = tmp.join(if cfg!(windows) { "croc.exe" } else { "croc" });
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho 'croc send [options] [files]' >&2\nexit 0\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let result = probe_croc_json(&bin);
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(result, Some(true));
     }
 }

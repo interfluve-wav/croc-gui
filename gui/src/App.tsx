@@ -9,6 +9,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import QRCode from "qrcode";
 import { applyProxyFieldNormalization } from "./proxyPaste";
 import { appendLogLine } from "./logUtils";
+import { formatSpeed } from "./speedFormat";
 import { SharePhraseBlock } from "./components/SharePhraseBlock";
 import { TransferFileList } from "./components/TransferFileList";
 import { TransferProgressBlock } from "./components/TransferProgressBlock";
@@ -90,6 +91,32 @@ type ProgressEvent = {
   speed: string | null;
   phase: string | null;
   label: string | null;
+};
+
+// v2 event types from croc --json (schollz/croc#1237). These are emitted
+// in parallel with the legacy `transfer-progress` / `transfer-line` events
+// so the GUI can migrate at its own pace.
+type ProgressV2Event = {
+  percent: number;
+  bytesDone: number;
+  bytesTotal: number;
+  speedBps: number;
+  file: string | null;
+};
+
+type PhaseV2Event = {
+  phase: string;
+  message: string | null;
+};
+
+type CompleteV2Event = {
+  files: Array<{ name: string; bytes: number }>;
+};
+
+type ErrorV2Event = {
+  code: string;
+  message: string;
+  hint: string | null;
 };
 
 type ProgressState = {
@@ -612,8 +639,101 @@ function App() {
     let unlistenLine: (() => void) | undefined;
     let unlistenExit: (() => void) | undefined;
     let unlistenProgress: (() => void) | undefined;
+    let unlistenCode: (() => void) | undefined;
+    let unlistenPhase: (() => void) | undefined;
+    let unlistenProgressV2: (() => void) | undefined;
+    let unlistenComplete: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
 
     (async () => {
+      unlistenCode = await listen<string>("transfer-code", (event) => {
+        // The structured code event from croc --json. Authoritative — the
+        // legacy `transfer-line` "Code is:" regex is broken on v11+, so
+        // this is the only reliable source.
+        const code = event.payload;
+        if (code && typeof code === "string") {
+          setPhrase(code);
+          setLog((prev) =>
+            appendLogLine(prev, `Code is: ${code}`),
+          );
+        }
+      });
+      unlistenPhase = await listen<PhaseV2Event>("transfer-phase", (event) => {
+        const { phase, message } = event.payload;
+        if (!phase) return;
+        // Mirror the phase into the log for visibility.
+        if (message) {
+          setLog((prev) => appendLogLine(prev, message));
+        }
+        // Map croc's "complete" phase to the GUI's "completed" terminal
+        // state immediately. The transfer-exit event will also fire, but
+        // this gives a faster UI update (no waiting for the process to
+        // actually exit).
+        if (phase === "complete") {
+          lastProgressAt.current = null;
+          if (phaseRef.current === "running") {
+            setPhase("completed");
+            setProgress((prev) => ({
+              ...prev,
+              percent: 100,
+              phase: "finishing",
+            }));
+            recordHistory("completed");
+            notify(
+              "Croc — transfer complete",
+              "Your transfer finished successfully.",
+            );
+          }
+        }
+      });
+      unlistenProgressV2 = await listen<ProgressV2Event>(
+        "transfer-progress-v2",
+        (event) => {
+          const p = event.payload;
+          lastProgressAt.current = Date.now();
+          const percent = Number.isFinite(p.percent)
+            ? Math.max(0, Math.min(100, Math.round(p.percent)))
+            : null;
+          // Convert bytes/s to a human-friendly "X MB/s" string so the
+          // existing speed UI keeps working.
+          const speed = formatSpeed(p.speedBps);
+          setProgress((prev) => ({
+            percent: percent ?? prev.percent,
+            bytesDone: p.bytesDone ?? prev.bytesDone,
+            bytesTotal: p.bytesTotal ?? prev.bytesTotal,
+            speed: speed ?? prev.speed,
+            phase: p.file ? "transferring" : prev.phase,
+            label: p.file ?? prev.label,
+          }));
+        },
+      );
+      unlistenComplete = await listen<CompleteV2Event>(
+        "transfer-complete",
+        (event) => {
+          // Already handled in transfer-phase "complete", but we use this
+          // hook to log the file list for diagnostic visibility.
+          const names = (event.payload.files ?? [])
+            .map((f) => f.name)
+            .join(", ");
+          if (names) {
+            setLog((prev) => appendLogLine(prev, `Transferred: ${names}`));
+          }
+        },
+      );
+      unlistenError = await listen<ErrorV2Event>(
+        "transfer-error",
+        (event) => {
+          // croc emits stable error codes (auth_failed, handshake_failed,
+          // timed_out, relay_unreachable, etc.) with a hint field. Show
+          // the hint in the error banner if present; fall back to the
+          // raw message. This replaces the regex `relayHandshakeErrorMessage`
+          // for v11+ croc binaries.
+          if (phaseRef.current !== "running") return;
+          const { code, message, hint } = event.payload;
+          const text = hint && code !== "failed" ? hint : message;
+          setError(`Transfer error (${code}): ${text}`);
+        },
+      );
       unlistenLine = await listen<LineEvent>("transfer-line", (event) => {
         const { line, code } = event.payload;
         setLog((prev) => appendLogLine(prev, line));
@@ -711,6 +831,11 @@ function App() {
       unlistenLine?.();
       unlistenProgress?.();
       unlistenExit?.();
+      unlistenCode?.();
+      unlistenPhase?.();
+      unlistenProgressV2?.();
+      unlistenComplete?.();
+      unlistenError?.();
     };
   }, []);
 
