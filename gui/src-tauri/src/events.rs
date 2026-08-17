@@ -86,27 +86,7 @@ pub struct TransferProgressV2 {
     pub bytes_total: i64,
     pub speed_bps: i64,
     pub file: Option<String>,
-}
-
-impl From<CrocEvent> for Option<TransferProgressV2> {
-    fn from(ev: CrocEvent) -> Self {
-        match ev {
-            CrocEvent::Progress {
-                file,
-                bytes_transferred,
-                bytes_total,
-                percent,
-                speed_bps,
-            } => Some(TransferProgressV2 {
-                percent,
-                bytes_done: bytes_transferred,
-                bytes_total,
-                speed_bps,
-                file,
-            }),
-            _ => None,
-        }
-    }
+    pub session_id: u64,
 }
 
 /// Tauri-facing payload for `transfer-phase`.
@@ -115,6 +95,7 @@ impl From<CrocEvent> for Option<TransferProgressV2> {
 pub struct TransferPhase {
     pub phase: String,
     pub message: Option<String>,
+    pub session_id: u64,
 }
 
 /// Tauri-facing payload for `transfer-error`.
@@ -124,6 +105,7 @@ pub struct TransferError {
     pub code: String,
     pub message: String,
     pub hint: Option<String>,
+    pub session_id: u64,
 }
 
 /// Tauri-facing payload for `transfer-complete`.
@@ -131,11 +113,13 @@ pub struct TransferError {
 #[serde(rename_all = "camelCase")]
 pub struct TransferComplete {
     pub files: Vec<CompleteFile>,
+    pub session_id: u64,
 }
 
 /// Callback invoked for each parsed event. Tauri emission is handled by the
 /// caller via this closure so this module stays UI-agnostic.
 pub trait EventSink: Send + 'static {
+    fn session_id(&self) -> u64;
     fn on_code(&mut self, code: String);
     fn on_phase(&mut self, phase: TransferPhase);
     fn on_progress(&mut self, progress: TransferProgressV2);
@@ -169,11 +153,16 @@ pub fn pump_json_stream_sync<R: Read>(reader: R, sink: &mut dyn EventSink) {
 }
 
 fn dispatch(trimmed: &str, sink: &mut dyn EventSink) {
+    let session_id = sink.session_id();
     match serde_json::from_str::<CrocEvent>(trimmed) {
         Ok(ev) => match ev {
             CrocEvent::Code { code } => sink.on_code(code),
             CrocEvent::Phase { phase, message } => {
-                sink.on_phase(TransferPhase { phase, message });
+                sink.on_phase(TransferPhase {
+                    phase,
+                    message,
+                    session_id,
+                });
             }
             CrocEvent::Progress {
                 file,
@@ -187,9 +176,10 @@ fn dispatch(trimmed: &str, sink: &mut dyn EventSink) {
                 bytes_total,
                 speed_bps,
                 file,
+                session_id,
             }),
             CrocEvent::Complete { files } => {
-                sink.on_complete(TransferComplete { files });
+                sink.on_complete(TransferComplete { files, session_id });
             }
             CrocEvent::Error {
                 code,
@@ -199,6 +189,7 @@ fn dispatch(trimmed: &str, sink: &mut dyn EventSink) {
                 code,
                 message,
                 hint,
+                session_id,
             }),
             CrocEvent::Version { .. } => {
                 // Informational only; no Tauri surface yet.
@@ -229,6 +220,10 @@ mod tests {
     }
 
     impl EventSink for CapturedEvents {
+        fn session_id(&self) -> u64 {
+            // Test fixture: use a constant session ID.
+            1
+        }
         fn on_code(&mut self, code: String) {
             self.codes.lock().unwrap().push(code);
         }

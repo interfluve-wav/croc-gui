@@ -102,21 +102,25 @@ type ProgressV2Event = {
   bytesTotal: number;
   speedBps: number;
   file: string | null;
+  sessionId: number;
 };
 
 type PhaseV2Event = {
   phase: string;
   message: string | null;
+  sessionId: number;
 };
 
 type CompleteV2Event = {
   files: Array<{ name: string; bytes: number }>;
+  sessionId: number;
 };
 
 type ErrorV2Event = {
   code: string;
   message: string;
   hint: string | null;
+  sessionId: number;
 };
 
 type ProgressState = {
@@ -659,8 +663,12 @@ function App() {
         }
       });
       unlistenPhase = await listen<PhaseV2Event>("transfer-phase", (event) => {
-        const { phase, message } = event.payload;
+        const { phase, message, sessionId } = event.payload;
         if (!phase) return;
+        // Ignore events from previous sessions.
+        if (sessionId != null && sessionId !== transferSessionRef.current) {
+          return;
+        }
         // Mirror the phase into the log for visibility.
         if (message) {
           setLog((prev) => appendLogLine(prev, message));
@@ -690,6 +698,10 @@ function App() {
         "transfer-progress-v2",
         (event) => {
           const p = event.payload;
+          // Ignore events from previous sessions.
+          if (p.sessionId != null && p.sessionId !== transferSessionRef.current) {
+            return;
+          }
           lastProgressAt.current = Date.now();
           const percent = Number.isFinite(p.percent)
             ? Math.max(0, Math.min(100, Math.round(p.percent)))
@@ -710,6 +722,13 @@ function App() {
       unlistenComplete = await listen<CompleteV2Event>(
         "transfer-complete",
         (event) => {
+          // Ignore events from previous sessions.
+          if (
+            event.payload.sessionId != null &&
+            event.payload.sessionId !== transferSessionRef.current
+          ) {
+            return;
+          }
           // Already handled in transfer-phase "complete", but we use this
           // hook to log the file list for diagnostic visibility.
           const names = (event.payload.files ?? [])
@@ -723,6 +742,13 @@ function App() {
       unlistenError = await listen<ErrorV2Event>(
         "transfer-error",
         (event) => {
+          // Ignore events from previous sessions.
+          if (
+            event.payload.sessionId != null &&
+            event.payload.sessionId !== transferSessionRef.current
+          ) {
+            return;
+          }
           // croc emits stable error codes (auth_failed, handshake_failed,
           // timed_out, relay_unreachable, etc.) with a hint field. Show
           // the hint in the error banner if present; fall back to the

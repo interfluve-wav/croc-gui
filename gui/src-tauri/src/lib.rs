@@ -128,9 +128,13 @@ fn emit_transfer_output(app: &AppHandle, stream: &str, raw_line: &str) {
 /// shows raw croc output in the log viewer.
 struct TauriEventSink {
     app: AppHandle,
+    session_id: u64,
 }
 
 impl EventSink for TauriEventSink {
+    fn session_id(&self) -> u64 {
+        self.session_id
+    }
     fn on_code(&mut self, code: String) {
         let _ = self.app.emit("transfer-code", code);
     }
@@ -151,14 +155,7 @@ impl EventSink for TauriEventSink {
         // structured parsing raced ahead of the legacy path we still
         // forward the line so nothing is lost, but with stream="stderr-unparsed"
         // so the UI can dedupe if it wants.
-        let _ = self.app.emit(
-            "transfer-line",
-            TransferLinePayload {
-                stream: "stderr-unparsed".into(),
-                line: raw_line,
-                code: None,
-            },
-        );
+        emit_transfer_output(&self.app, "stderr", &raw_line);
     }
 }
 
@@ -330,7 +327,7 @@ fn start_transfer(
         }
     }
 
-    let args = match croc::build_args(&request) {
+    let args = match croc::build_args(&request, &program) {
         Ok(args) => args,
         Err(err) => {
             clear_send_zip_workdir(&state);
@@ -540,6 +537,7 @@ fn start_transfer(
         // `transfer-*` events that the GUI can opt into.
         let json_sink = TauriEventSink {
             app: app_err.clone(),
+            session_id,
         };
         events::pump_json_stream(err, Box::new(json_sink));
     }

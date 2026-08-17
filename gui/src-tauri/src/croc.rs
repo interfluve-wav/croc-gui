@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -12,40 +12,26 @@ use zip::{CompressionMethod, ZipWriter};
 pub const DEFAULT_RELAY: &str = "ipv4.getcroc.com:9009";
 pub const DEFAULT_RELAY_PASS: &str = "pass123";
 
-/// Cached result of probing whether the bundled croc binary accepts `--json`.
-/// Populated by `croc_supports_json()`.
-static CROC_SUPPORTS_JSON: OnceLock<bool> = OnceLock::new();
+/// Cached results of probing whether specific croc binaries accept `--json`.
+/// Maps absolute path → capability. Each distinct binary is probed once.
+static CROC_JSON_CACHE: Mutex<HashMap<PathBuf, bool>> = Mutex::new(HashMap::new());
 
-/// Returns `true` if the bundled croc binary accepts `--json`. The result
-/// is cached after the first successful probe; if the probe fails (binary
-/// missing, version unknown), we conservatively return `false` so the GUI
-/// falls back to the regex parser.
-pub fn croc_supports_json() -> bool {
-    *CROC_SUPPORTS_JSON.get_or_init(|| {
-        let Some(bin) = current_croc_bin() else {
-            return false;
-        };
-        probe_croc_json(&bin).unwrap_or(false)
-    })
-}
-
-/// Internal: resolve the croc binary from `CROC_BIN` env, falling back to
-/// the well-known dev path. We intentionally avoid the Tauri resource_dir
-/// resolution here because this runs in a synchronous test context.
-fn current_croc_bin() -> Option<std::path::PathBuf> {
-    if let Ok(p) = std::env::var("CROC_BIN") {
-        let path = std::path::PathBuf::from(p);
-        if path.is_file() {
-            return Some(path);
+/// Returns `true` if the croc binary at `path` accepts `--json`. The result
+/// is cached per executable path; if the probe fails (binary missing, version
+/// unknown), we conservatively return `false` so the GUI falls back to the
+/// regex parser.
+pub fn croc_supports_json(path: &Path) -> bool {
+    if let Ok(mut cache) = CROC_JSON_CACHE.lock() {
+        if let Some(&result) = cache.get(path) {
+            return result;
         }
+        let result = probe_croc_json(path).unwrap_or(false);
+        cache.insert(path.to_path_buf(), result);
+        result
+    } else {
+        // Poisoned mutex — safe fallback.
+        probe_croc_json(path).unwrap_or(false)
     }
-    let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("bin")
-        .join(if cfg!(windows) { "croc.exe" } else { "croc" });
-    if dev_path.is_file() {
-        return Some(dev_path);
-    }
-    None
 }
 
 /// Probe the croc binary to see if it accepts `--json`. We do this by
@@ -479,7 +465,10 @@ pub fn resolve_relay_options(opts: &TransferOptions) -> (Option<String>, Option<
     }
 }
 
-pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
+pub fn build_args(
+    req: &StartTransferRequest,
+    resolved_bin: &Path,
+) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     let opts = &req.options;
     let is_receive = matches!(req.mode, TransferMode::Receive);
@@ -492,7 +481,7 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     }
     // Request machine-readable NDJSON events from croc v11+ (schollz/croc#1237).
     // Older croc versions reject unknown flags — `croc_supports_json` gates this.
-    if opts.use_json_events && croc_supports_json() {
+    if opts.use_json_events && croc_supports_json(resolved_bin) {
         args.push("--json".into());
     }
     if is_receive {
@@ -728,6 +717,10 @@ pub fn extract_code_phrase(line: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn dummy_bin_path() -> PathBuf {
+        PathBuf::from("/tmp/croc")
+    }
+
     fn opts() -> TransferOptions {
         TransferOptions {
             custom_code: None,
@@ -763,7 +756,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         let expected = default_relay_args();
         assert_eq!(
             args,
@@ -787,7 +780,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         let expected = default_relay_args();
         assert_eq!(
             args,
@@ -889,7 +882,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -924,7 +917,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -998,7 +991,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         let expected = default_relay_args();
         assert_eq!(
             args,
@@ -1029,7 +1022,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(!args.iter().any(|a| a == "--socks5" || a == "--connect"));
     }
 
@@ -1044,7 +1037,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(args, vec!["--local", "send", "/tmp/a.txt"]);
     }
 
@@ -1059,7 +1052,7 @@ mod tests {
             out_dir: Some("/tmp/inbox".into()),
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -1084,7 +1077,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1096,7 +1089,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1108,7 +1101,7 @@ mod tests {
             out_dir: Some("/tmp/inbox".into()),
             options: opts(),
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -1136,7 +1129,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(args.contains(&"--pass".to_string()));
         assert!(args.contains(&DEFAULT_RELAY_PASS.to_string()));
         assert!(args.contains(&DEFAULT_RELAY.to_string()));
@@ -1154,7 +1147,7 @@ mod tests {
             out_dir: Some("/tmp/inbox".into()),
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(args.contains(&"--pass".to_string()));
         assert!(args.contains(&DEFAULT_RELAY_PASS.to_string()));
         assert!(args.contains(&DEFAULT_RELAY.to_string()));
@@ -1181,7 +1174,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     fn receive_requires_out_dir() {
@@ -1192,7 +1185,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1204,7 +1197,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1310,7 +1303,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(
             !args.contains(&"--json".to_string()),
             "--json should not be present when use_json_events=false; got: {:?}",
