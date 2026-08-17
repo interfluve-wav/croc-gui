@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -14,7 +13,8 @@ pub const DEFAULT_RELAY_PASS: &str = "pass123";
 
 /// Cached results of probing whether specific croc binaries accept `--json`.
 /// Maps absolute path → capability. Each distinct binary is probed once.
-static CROC_JSON_CACHE: Mutex<HashMap<PathBuf, bool>> = Mutex::new(HashMap::new());
+static CROC_JSON_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, bool>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 
 /// Returns `true` if the croc binary at `path` accepts `--json`. The result
 /// is cached per executable path; if the probe fails (binary missing, version
@@ -1351,5 +1351,48 @@ mod tests {
         let result = probe_croc_json(&bin);
         let _ = std::fs::remove_dir_all(&tmp);
         assert_eq!(result, Some(true));
+    }
+
+    #[test]
+    fn croc_supports_json_caches_per_path() {
+        // CodeRabbit PR#8: verify the per-path cache gives each croc
+        // binary its own result — a v10 binary on PATH must not poison
+        // the v11+ bundled binary's cached value (or vice versa).
+        let tmp = std::env::temp_dir().join(format!("fake-croc-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let bin_name = if cfg!(windows) { "croc.exe" } else { "croc" };
+        let v10 = tmp.join(format!("v10-{bin_name}"));
+        let v11 = tmp.join(format!("v11-{bin_name}"));
+        std::fs::write(
+            &v10,
+            "#!/bin/sh\necho 'flag provided but not defined: -json' >&2\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &v11,
+            "#!/bin/sh\necho 'croc send [options] [files]' >&2\nexit 0\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&v10, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(&v11, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert_eq!(
+            croc_supports_json(&v10),
+            false,
+            "v10 binary should be detected as not supporting --json"
+        );
+        assert_eq!(
+            croc_supports_json(&v11),
+            true,
+            "v11 binary should be detected as supporting --json"
+        );
+        // Re-probe — should hit the per-path cache without re-execing
+        // the binary.
+        assert_eq!(croc_supports_json(&v10), false);
+        assert_eq!(croc_supports_json(&v11), true);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
