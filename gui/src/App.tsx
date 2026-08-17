@@ -111,6 +111,11 @@ type PhaseV2Event = {
   sessionId: number;
 };
 
+type CodeV2Event = {
+  code: string;
+  sessionId: number;
+};
+
 type CompleteV2Event = {
   files: Array<{ name: string; bytes: number }>;
   sessionId: number;
@@ -650,16 +655,20 @@ function App() {
     let unlistenError: (() => void) | undefined;
 
     (async () => {
-      unlistenCode = await listen<string>("transfer-code", (event) => {
-        // The structured code event from croc --json. Authoritative — the
-        // legacy `transfer-line` "Code is:" regex is broken on v11+, so
-        // this is the only reliable source.
-        const code = event.payload;
+      unlistenCode = await listen<CodeV2Event>("transfer-code", (event) => {
+        // Drop events from previous/cancelled sessions — the pump
+        // thread can keep emitting after cancel until the pipe closes
+        // (Macroscope PR#8 review).
+        const { code, sessionId } = event.payload;
+        if (
+          sessionId != null &&
+          sessionId !== transferSessionRef.current
+        ) {
+          return;
+        }
         if (code && typeof code === "string") {
           setPhrase(code);
-          setLog((prev) =>
-            appendLogLine(prev, `Code is: ${code}`),
-          );
+          setLog((prev) => appendLogLine(prev, `Code is: ${code}`));
         }
       });
       unlistenPhase = await listen<PhaseV2Event>("transfer-phase", (event) => {
@@ -673,24 +682,21 @@ function App() {
         if (message) {
           setLog((prev) => appendLogLine(prev, message));
         }
-        // Map croc's "complete" phase to the GUI's "completed" terminal
-        // state immediately. The transfer-exit event will also fire, but
-        // this gives a faster UI update (no waiting for the process to
-        // actually exit).
+        // When croc reports "complete", the file transfer is done but
+        // post-processing (e.g. zipAfterReceive) may still be running.
+        // Flip the progress bar to "finishing" here for instant feedback,
+        // but do NOT mark the transfer "completed" yet — that requires
+        // the process to actually exit successfully (`transfer-exit`
+        // handles it), otherwise post-processing failures are hidden
+        // (Macroscope PR#8 review).
         if (phase === "complete") {
           lastProgressAt.current = null;
           if (phaseRef.current === "running") {
-            setPhase("completed");
             setProgress((prev) => ({
               ...prev,
               percent: 100,
               phase: "finishing",
             }));
-            recordHistory("completed");
-            notify(
-              "Croc — transfer complete",
-              "Your transfer finished successfully.",
-            );
           }
         }
       });

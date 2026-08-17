@@ -7,7 +7,7 @@ use croc::{
     resolve_relay_options, sanitize_code_phrase, zip_new_entries, StartTransferRequest,
     TransferMode, DEFAULT_RELAY,
 };
-use events::{EventSink, TransferComplete, TransferError, TransferPhase, TransferProgressV2};
+use events::{EventSink, TransferCode, TransferComplete, TransferError, TransferPhase, TransferProgressV2};
 use progress::parse_progress_line;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -135,7 +135,7 @@ impl EventSink for TauriEventSink {
     fn session_id(&self) -> u64 {
         self.session_id
     }
-    fn on_code(&mut self, code: String) {
+    fn on_code(&mut self, code: TransferCode) {
         let _ = self.app.emit("transfer-code", code);
     }
     fn on_phase(&mut self, phase: TransferPhase) {

@@ -98,6 +98,16 @@ pub struct TransferPhase {
     pub session_id: u64,
 }
 
+/// Tauri-facing payload for `transfer-code`. Carries `session_id` so the
+/// frontend can reject stale code phrases from a cancelled transfer that
+/// race against a new one (Macroscope PR#8 review).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferCode {
+    pub code: String,
+    pub session_id: u64,
+}
+
 /// Tauri-facing payload for `transfer-error`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +130,7 @@ pub struct TransferComplete {
 /// caller via this closure so this module stays UI-agnostic.
 pub trait EventSink: Send + 'static {
     fn session_id(&self) -> u64;
-    fn on_code(&mut self, code: String);
+    fn on_code(&mut self, code: TransferCode);
     fn on_phase(&mut self, phase: TransferPhase);
     fn on_progress(&mut self, progress: TransferProgressV2);
     fn on_complete(&mut self, complete: TransferComplete);
@@ -156,7 +166,9 @@ fn dispatch(trimmed: &str, sink: &mut dyn EventSink) {
     let session_id = sink.session_id();
     match serde_json::from_str::<CrocEvent>(trimmed) {
         Ok(ev) => match ev {
-            CrocEvent::Code { code } => sink.on_code(code),
+            CrocEvent::Code { code } => {
+                sink.on_code(TransferCode { code, session_id })
+            }
             CrocEvent::Phase { phase, message } => {
                 sink.on_phase(TransferPhase {
                     phase,
@@ -211,7 +223,7 @@ mod tests {
     /// In-memory sink for tests.
     #[derive(Default, Clone)]
     struct CapturedEvents {
-        codes: Arc<Mutex<Vec<String>>>,
+        codes: Arc<Mutex<Vec<TransferCode>>>,
         phases: Arc<Mutex<Vec<TransferPhase>>>,
         progresses: Arc<Mutex<Vec<TransferProgressV2>>>,
         completes: Arc<Mutex<Vec<TransferComplete>>>,
@@ -224,7 +236,7 @@ mod tests {
             // Test fixture: use a constant session ID.
             1
         }
-        fn on_code(&mut self, code: String) {
+        fn on_code(&mut self, code: TransferCode) {
             self.codes.lock().unwrap().push(code);
         }
         fn on_phase(&mut self, phase: TransferPhase) {
@@ -266,7 +278,10 @@ mod tests {
 "#;
         let cap = run_sync(Cursor::new(input));
 
-        assert_eq!(cap.codes.lock().unwrap().as_slice(), &["mango-lake-42"]);
+        let codes = cap.codes.lock().unwrap();
+        assert_eq!(codes.len(), 1);
+        assert_eq!(codes[0].code, "mango-lake-42");
+        assert_eq!(codes[0].session_id, 1, "code event must carry session id");
         let phases = cap.phases.lock().unwrap();
         assert_eq!(phases.len(), 4);
         assert_eq!(phases[0].phase, "hashing");
