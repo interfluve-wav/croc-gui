@@ -1,4 +1,5 @@
 mod croc;
+pub mod events;
 mod progress;
 
 use croc::{
@@ -6,6 +7,7 @@ use croc::{
     resolve_relay_options, sanitize_code_phrase, zip_new_entries, StartTransferRequest,
     TransferMode, DEFAULT_RELAY,
 };
+use events::{EventSink, TransferCode, TransferComplete, TransferError, TransferPhase, TransferProgressV2};
 use progress::parse_progress_line;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -117,6 +119,44 @@ fn emit_transfer_output(app: &AppHandle, stream: &str, raw_line: &str) {
             code,
         },
     );
+}
+
+/// Adapter that turns `events::EventSink` callbacks into Tauri emissions.
+/// Used by `start_transfer` when croc was launched with `--json`. The legacy
+/// `transfer-line` log emitter keeps running in parallel via `pump_stream`,
+/// so the GUI has a single source of truth for structured events but still
+/// shows raw croc output in the log viewer.
+struct TauriEventSink {
+    app: AppHandle,
+    session_id: u64,
+}
+
+impl EventSink for TauriEventSink {
+    fn session_id(&self) -> u64 {
+        self.session_id
+    }
+    fn on_code(&mut self, code: TransferCode) {
+        let _ = self.app.emit("transfer-code", code);
+    }
+    fn on_phase(&mut self, phase: TransferPhase) {
+        let _ = self.app.emit("transfer-phase", phase);
+    }
+    fn on_progress(&mut self, progress: TransferProgressV2) {
+        let _ = self.app.emit("transfer-progress-v2", progress);
+    }
+    fn on_complete(&mut self, complete: TransferComplete) {
+        let _ = self.app.emit("transfer-complete", complete);
+    }
+    fn on_error(&mut self, error: TransferError) {
+        let _ = self.app.emit("transfer-error", error);
+    }
+    fn on_unparsed(&mut self, raw_line: String) {
+        // The legacy pump already emits transfer-line for raw text. If
+        // structured parsing raced ahead of the legacy path we still
+        // forward the line so nothing is lost, but with stream="stderr-unparsed"
+        // so the UI can dedupe if it wants.
+        emit_transfer_output(&self.app, "stderr", &raw_line);
+    }
 }
 
 fn pump_stream<R: Read + Send + 'static>(reader: R, app: AppHandle, stream: String) {
@@ -287,7 +327,7 @@ fn start_transfer(
         }
     }
 
-    let args = match croc::build_args(&request) {
+    let args = match croc::build_args(&request, &program) {
         Ok(args) => args,
         Err(err) => {
             clear_send_zip_workdir(&state);
@@ -491,7 +531,15 @@ fn start_transfer(
 
     let app_err = app.clone();
     if let Some(err) = stderr {
-        pump_stream(err, app_err, "stderr".into());
+        // Always keep the legacy log pump running so the existing log viewer
+        // shows raw croc output. In parallel, feed the same pipe to the
+        // structured event consumer — it parses NDJSON and emits richer
+        // `transfer-*` events that the GUI can opt into.
+        let json_sink = TauriEventSink {
+            app: app_err.clone(),
+            session_id,
+        };
+        events::pump_json_stream(err, Box::new(json_sink));
     }
 
     let app_wait = app.clone();

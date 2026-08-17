@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -10,6 +10,50 @@ use zip::{CompressionMethod, ZipWriter};
 /// Public croc relay used by getcroc.com (must match for web → app transfers).
 pub const DEFAULT_RELAY: &str = "ipv4.getcroc.com:9009";
 pub const DEFAULT_RELAY_PASS: &str = "pass123";
+
+/// Cached results of probing whether specific croc binaries accept `--json`.
+/// Maps absolute path → capability. Each distinct binary is probed once.
+static CROC_JSON_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<PathBuf, bool>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// Returns `true` if the croc binary at `path` accepts `--json`. The result
+/// is cached per executable path; if the probe fails (binary missing, version
+/// unknown), we conservatively return `false` so the GUI falls back to the
+/// regex parser.
+pub fn croc_supports_json(path: &Path) -> bool {
+    if let Ok(mut cache) = CROC_JSON_CACHE.lock() {
+        if let Some(&result) = cache.get(path) {
+            return result;
+        }
+        let result = probe_croc_json(path).unwrap_or(false);
+        cache.insert(path.to_path_buf(), result);
+        result
+    } else {
+        // Poisoned mutex — safe fallback.
+        probe_croc_json(path).unwrap_or(false)
+    }
+}
+
+/// Probe the croc binary to see if it accepts `--json`. We do this by
+/// invoking `croc --json send --help` and checking if croc treats `--json`
+/// as a known flag. croc v10 will reject with "flag provided but not
+/// defined" and exit non-zero; croc v11+ will exit 0 and show the help text.
+fn probe_croc_json(bin: &std::path::Path) -> Option<bool> {
+    use std::process::Command;
+    let out = Command::new(bin)
+        .args(["--json", "send", "--help"])
+        .output()
+        .ok()?;
+    if out.status.success() {
+        return Some(true);
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains("flag provided but not defined") {
+        return Some(false);
+    }
+    // Unknown failure — be conservative.
+    None
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +81,15 @@ pub struct TransferOptions {
     /// HTTP proxy (`croc --connect` / `$HTTP_PROXY`).
     #[serde(default)]
     pub connect: Option<String>,
+    /// Use croc's `--json` mode for machine-readable events. Requires croc v11+
+    /// (the feature was added in schollz/croc#1237). Older croc binaries will
+    /// fall back to the regex-based parser in `progress.rs`.
+    #[serde(default = "default_true")]
+    pub use_json_events: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -412,7 +465,10 @@ pub fn resolve_relay_options(opts: &TransferOptions) -> (Option<String>, Option<
     }
 }
 
-pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
+pub fn build_args(
+    req: &StartTransferRequest,
+    resolved_bin: &Path,
+) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     let opts = &req.options;
     let is_receive = matches!(req.mode, TransferMode::Receive);
@@ -422,6 +478,11 @@ pub fn build_args(req: &StartTransferRequest) -> Result<Vec<String>, String> {
     }
     if opts.overwrite || is_receive {
         args.push("--overwrite".into());
+    }
+    // Request machine-readable NDJSON events from croc v11+ (schollz/croc#1237).
+    // Older croc versions reject unknown flags — `croc_supports_json` gates this.
+    if opts.use_json_events && croc_supports_json(resolved_bin) {
+        args.push("--json".into());
     }
     if is_receive {
         args.push("--ignore-stdin".into());
@@ -656,6 +717,10 @@ pub fn extract_code_phrase(line: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn dummy_bin_path() -> PathBuf {
+        PathBuf::from("/tmp/croc")
+    }
+
     fn opts() -> TransferOptions {
         TransferOptions {
             custom_code: None,
@@ -669,6 +734,7 @@ mod tests {
             pass: None,
             socks5: None,
             connect: None,
+            use_json_events: false, // test against the non-JSON arg set
         }
     }
 
@@ -690,7 +756,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         let expected = default_relay_args();
         assert_eq!(
             args,
@@ -714,7 +780,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         let expected = default_relay_args();
         assert_eq!(
             args,
@@ -816,7 +882,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -851,7 +917,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -925,7 +991,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         let expected = default_relay_args();
         assert_eq!(
             args,
@@ -956,7 +1022,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(!args.iter().any(|a| a == "--socks5" || a == "--connect"));
     }
 
@@ -971,7 +1037,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(args, vec!["--local", "send", "/tmp/a.txt"]);
     }
 
@@ -986,7 +1052,7 @@ mod tests {
             out_dir: Some("/tmp/inbox".into()),
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -1011,7 +1077,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1023,7 +1089,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1035,7 +1101,7 @@ mod tests {
             out_dir: Some("/tmp/inbox".into()),
             options: opts(),
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert_eq!(
             args,
             vec![
@@ -1063,7 +1129,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(args.contains(&"--pass".to_string()));
         assert!(args.contains(&DEFAULT_RELAY_PASS.to_string()));
         assert!(args.contains(&DEFAULT_RELAY.to_string()));
@@ -1081,7 +1147,7 @@ mod tests {
             out_dir: Some("/tmp/inbox".into()),
             options,
         };
-        let args = build_args(&req).unwrap();
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
         assert!(args.contains(&"--pass".to_string()));
         assert!(args.contains(&DEFAULT_RELAY_PASS.to_string()));
         assert!(args.contains(&DEFAULT_RELAY.to_string()));
@@ -1108,7 +1174,7 @@ mod tests {
             out_dir: None,
             options,
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     fn receive_requires_out_dir() {
@@ -1119,7 +1185,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1131,7 +1197,7 @@ mod tests {
             out_dir: None,
             options: opts(),
         };
-        assert!(build_args(&req).is_err());
+        assert!(build_args(&req, &dummy_bin_path()).is_err());
     }
 
     #[test]
@@ -1223,6 +1289,110 @@ mod tests {
             Some(v) => std::env::set_var("CROC_BIN", v),
             None => std::env::remove_var("CROC_BIN"),
         }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn build_args_omits_json_when_disabled() {
+        // Default opts() already sets use_json_events: false, so --json
+        // must not appear even when the binary supports it.
+        let req = StartTransferRequest {
+            mode: TransferMode::Send,
+            paths: vec!["/tmp/x.txt".into()],
+            code: None,
+            out_dir: None,
+            options: opts(),
+        };
+        let args = build_args(&req, &dummy_bin_path()).unwrap();
+        assert!(
+            !args.contains(&"--json".to_string()),
+            "--json should not be present when use_json_events=false; got: {:?}",
+            args
+        );
+    }
+
+    #[test]
+    fn probe_croc_json_detects_v10_rejection() {
+        // Write a fake "croc" that rejects --json with the v10 error string.
+        let tmp = std::env::temp_dir().join(format!("fake-croc-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let bin = tmp.join(if cfg!(windows) { "croc.exe" } else { "croc" });
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho 'flag provided but not defined: -json' >&2\nexit 1\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let result = probe_croc_json(&bin);
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(result, Some(false));
+    }
+
+    #[test]
+    fn probe_croc_json_detects_v11_acceptance() {
+        // Write a fake "croc" that exits 0 when given --json.
+        let tmp = std::env::temp_dir().join(format!("fake-croc-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let bin = tmp.join(if cfg!(windows) { "croc.exe" } else { "croc" });
+        std::fs::write(
+            &bin,
+            "#!/bin/sh\necho 'croc send [options] [files]' >&2\nexit 0\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let result = probe_croc_json(&bin);
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(result, Some(true));
+    }
+
+    #[test]
+    fn croc_supports_json_caches_per_path() {
+        // CodeRabbit PR#8: verify the per-path cache gives each croc
+        // binary its own result — a v10 binary on PATH must not poison
+        // the v11+ bundled binary's cached value (or vice versa).
+        let tmp = std::env::temp_dir().join(format!("fake-croc-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let bin_name = if cfg!(windows) { "croc.exe" } else { "croc" };
+        let v10 = tmp.join(format!("v10-{bin_name}"));
+        let v11 = tmp.join(format!("v11-{bin_name}"));
+        std::fs::write(
+            &v10,
+            "#!/bin/sh\necho 'flag provided but not defined: -json' >&2\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &v11,
+            "#!/bin/sh\necho 'croc send [options] [files]' >&2\nexit 0\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&v10, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(&v11, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        assert_eq!(
+            croc_supports_json(&v10),
+            false,
+            "v10 binary should be detected as not supporting --json"
+        );
+        assert_eq!(
+            croc_supports_json(&v11),
+            true,
+            "v11 binary should be detected as supporting --json"
+        );
+        // Re-probe — should hit the per-path cache without re-execing
+        // the binary.
+        assert_eq!(croc_supports_json(&v10), false);
+        assert_eq!(croc_supports_json(&v11), true);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
